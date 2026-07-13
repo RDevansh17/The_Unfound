@@ -162,6 +162,25 @@ function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function describeVariant(variant: NonNullable<ReplyGenerationRequest["variant"]>): string {
+  switch (variant) {
+    case "agree":
+      return "Write a reply that clearly AGREES and adds one specific supporting point or example.";
+    case "contrarian":
+      return "Write a respectful CONTRARIAN reply that challenges the idea (never the person) with a concrete reason.";
+    case "question":
+      return "Write a reply that is a single SHARP, genuinely curious QUESTION.";
+    case "supportive":
+      return "Write a warm, SUPPORTIVE and encouraging reply that still adds something specific.";
+    case "witty":
+      return "Write a WITTY, clever reply that lands lightly and still adds value (not corny).";
+    case "professional":
+      return "Write a PROFESSIONAL, credible, concise reply.";
+    default:
+      return "Write a natural, human reply that adds value.";
+  }
+}
+
 function buildUserPrompt(settings: AssistantSettings, request: ReplyGenerationRequest): string {
   const length =
     settings.replyLength === "short"
@@ -178,16 +197,28 @@ function buildUserPrompt(settings: AssistantSettings, request: ReplyGenerationRe
   const targetLabel = request.isReply ? "the comment you are replying to" : "the post you are replying to";
   const target = handleOrName(request.targetHandle, request.targetAuthor, "the author");
 
+  const count = Math.min(Math.max(request.count ?? 3, 1), 3);
+  const taskLines = request.variant
+    ? [
+        "TASK",
+        `Write ${count} fresh reply option${count > 1 ? "s" : ""} that fit the context above.`,
+        describeVariant(request.variant),
+        "Make each option distinct from typical phrasing — vary the angle and wording."
+      ]
+    : [
+        "TASK",
+        "Write 3 distinct reply options that fit the context above:",
+        "1) A sharp agreement that adds one specific point",
+        "2) A thoughtful pushback, nuance, or alternate angle",
+        "3) A smart question or a practical takeaway"
+      ];
+
   const lines = [
     "CONTEXT",
     situation,
     guidance,
     "",
-    "TASK",
-    "Write 3 distinct reply options that fit the context above:",
-    "1) A sharp agreement that adds one specific point",
-    "2) A thoughtful pushback, nuance, or alternate angle",
-    "3) A smart question or a practical takeaway",
+    ...taskLines,
     "",
     `Tone: ${describeTone(settings.tone)}`,
     length,

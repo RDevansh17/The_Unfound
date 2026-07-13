@@ -27,6 +27,17 @@ type ArticleInfo = {
   handle?: string;
 };
 
+type RegenVariant = "agree" | "contrarian" | "question" | "supportive" | "witty" | "professional";
+
+const REGEN_OPTIONS: { value: RegenVariant; label: string }[] = [
+  { value: "agree", label: "Agree" },
+  { value: "contrarian", label: "Contrarian" },
+  { value: "question", label: "Question" },
+  { value: "supportive", label: "Supportive" },
+  { value: "witty", label: "Witty" },
+  { value: "professional", label: "Professional" }
+];
+
 let cachedOwnHandle: string | null = null;
 
 const ARTICLE_SELECTOR = 'article[data-testid="tweet"]';
@@ -184,7 +195,14 @@ async function generateAndShowReplies(
       status: "ready",
       replies: result.replies,
       contextLabel: describeContextLabel(context),
-      onSelect: (reply) => insertReply(textbox, reply)
+      onSelect: (reply) => insertReply(textbox, reply),
+      regenerate: async (variant) => {
+        const regen = await sendRuntimeMessage<ReplyGenerationResult>({
+          type: "GENERATE_REPLIES",
+          payload: { ...context, variant, count: 1 }
+        });
+        return regen.replies[0] || "";
+      }
     });
   } catch (error) {
     showPanel(anchor, {
@@ -628,7 +646,13 @@ function showPanel(
   state:
     | { status: "loading"; message: string }
     | { status: "error"; message: string }
-    | { status: "ready"; replies: string[]; contextLabel?: string; onSelect: (reply: string) => void }
+    | {
+        status: "ready";
+        replies: string[];
+        contextLabel?: string;
+        onSelect: (reply: string) => void;
+        regenerate?: (variant: RegenVariant) => Promise<string>;
+      }
 ): void {
   closePanel(false);
   panelAnchor = anchor;
@@ -668,9 +692,14 @@ function showPanel(
 
   const body = document.createElement("div");
   body.className = "xra-panel-body";
+  body.addEventListener("click", (event) => {
+    if (!(event.target as HTMLElement)?.closest(".xra-regen")) {
+      closeAllRegenMenus();
+    }
+  });
 
   if (state.status === "ready") {
-    renderReadyState(body, subtitle, state.replies, state.onSelect, state.contextLabel);
+    renderReadyState(panel, body, subtitle, state.replies, state.onSelect, state.contextLabel, state.regenerate);
   } else if (state.status === "loading") {
     const loading = document.createElement("div");
     loading.className = "xra-loading-block";
@@ -783,11 +812,13 @@ function confirmSendThenClose(): void {
 }
 
 function renderReadyState(
+  panel: HTMLElement,
   body: HTMLElement,
   subtitle: HTMLElement,
   replies: string[],
   onInsert: (reply: string) => void,
-  contextLabel?: string
+  contextLabel?: string,
+  regenerate?: (variant: RegenVariant) => Promise<string>
 ): void {
   const labels = ["Agree + add", "Nuance", "Question"];
 
@@ -811,6 +842,8 @@ function renderReadyState(
 
     replies.forEach((reply, index) => {
       const label = labels[index] || `Option ${index + 1}`;
+      let current = reply;
+
       const card = document.createElement("div");
       card.className = "xra-reply-choice";
 
@@ -833,7 +866,7 @@ function renderReadyState(
 
       const bodyText = document.createElement("span");
       bodyText.className = "xra-reply-body";
-      bodyText.textContent = reply;
+      bodyText.textContent = current;
 
       const actions = document.createElement("div");
       actions.className = "xra-reply-actions";
@@ -845,7 +878,7 @@ function renderReadyState(
       copyBtn.addEventListener("click", async (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const ok = await copyToClipboard(reply);
+        const ok = await copyToClipboard(current);
         const textEl = copyBtn.querySelector("span");
         if (textEl) {
           textEl.textContent = ok ? "Copied" : "Failed";
@@ -862,7 +895,7 @@ function renderReadyState(
       editBtn.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        showEditor(reply, label);
+        showEditor(current, labelEl.textContent || label);
       });
 
       const insertBtn = document.createElement("button");
@@ -872,10 +905,90 @@ function renderReadyState(
       insertBtn.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        onInsert(reply);
+        onInsert(current);
       });
 
-      actions.append(copyBtn, editBtn, insertBtn);
+      actions.append(copyBtn, editBtn);
+
+      if (regenerate) {
+        const regenWrap = document.createElement("div");
+        regenWrap.className = "xra-regen";
+
+        const regenBtn = document.createElement("button");
+        regenBtn.type = "button";
+        regenBtn.className = "xra-chip";
+        regenBtn.innerHTML = actionIcon("regen") + "<span>Regenerate</span>";
+
+        const menu = document.createElement("div");
+        menu.className = "xra-regen-menu";
+        menu.hidden = true;
+        panel.append(menu);
+
+        REGEN_OPTIONS.forEach((option) => {
+          const item = document.createElement("button");
+          item.type = "button";
+          item.className = "xra-regen-item";
+          item.textContent = option.label;
+          item.addEventListener("click", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            menu.hidden = true;
+
+            card.classList.add("xra-reply-loading");
+            const previous = bodyText.textContent;
+            bodyText.textContent = `Writing a ${option.label.toLowerCase()} reply…`;
+
+            try {
+              const next = (await regenerate(option.value)).trim();
+              if (next) {
+                current = next;
+                bodyText.textContent = next;
+                labelEl.textContent = option.label;
+              } else {
+                bodyText.textContent = previous;
+              }
+            } catch {
+              bodyText.textContent = previous;
+            } finally {
+              card.classList.remove("xra-reply-loading");
+            }
+          });
+          menu.append(item);
+        });
+
+        regenBtn.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const willOpen = menu.hidden;
+          closeAllRegenMenus();
+          if (!willOpen) {
+            return;
+          }
+
+          menu.hidden = false;
+          const buttonRect = regenBtn.getBoundingClientRect();
+          const panelRect = panel.getBoundingClientRect();
+          const menuHeight = menu.offsetHeight;
+          const menuWidth = menu.offsetWidth;
+
+          let top = buttonRect.top - panelRect.top - menuHeight - 6;
+          if (top < 8) {
+            top = buttonRect.bottom - panelRect.top + 6;
+          }
+
+          let left = buttonRect.left - panelRect.left;
+          left = Math.min(left, panelRect.width - menuWidth - 8);
+          left = Math.max(8, left);
+
+          menu.style.top = `${top}px`;
+          menu.style.left = `${left}px`;
+        });
+
+        regenWrap.append(regenBtn);
+        actions.append(regenWrap);
+      }
+
+      actions.append(insertBtn);
       card.append(topRow, bodyText, actions);
       list.append(card);
     });
@@ -963,13 +1076,20 @@ function renderReadyState(
   showList();
 }
 
-function actionIcon(kind: "copy" | "edit" | "insert"): string {
+function actionIcon(kind: "copy" | "edit" | "insert" | "regen"): string {
   const icons: Record<typeof kind, string> = {
     copy: '<path d="M9 9V5.5A1.5 1.5 0 0 1 10.5 4h8A1.5 1.5 0 0 1 20 5.5v8a1.5 1.5 0 0 1-1.5 1.5H15" stroke="currentColor" stroke-width="1.6"/><rect x="4" y="9" width="11" height="11" rx="1.5" stroke="currentColor" stroke-width="1.6"/>',
     edit: '<path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13.5 6.5l4 4" stroke="currentColor" stroke-width="1.6"/>',
-    insert: '<path d="M12 4v12m0 0 4-4m-4 4-4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'
+    insert: '<path d="M12 4v12m0 0 4-4m-4 4-4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
+    regen: '<path d="M4 12a8 8 0 0 1 13.7-5.6L20 8M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.6L4 16M4 20v-4h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
   };
   return `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true">${icons[kind]}</svg>`;
+}
+
+function closeAllRegenMenus(): void {
+  document.querySelectorAll<HTMLElement>(`#${PANEL_ID} .xra-regen-menu`).forEach((menu) => {
+    menu.hidden = true;
+  });
 }
 
 async function copyToClipboard(text: string): Promise<boolean> {
@@ -1447,6 +1567,53 @@ function injectStyles(): void {
     .xra-chip-primary:hover {
       background: rgba(29, 155, 240, 0.26);
       color: #eaf5ff;
+    }
+
+    .xra-regen {
+      position: relative;
+    }
+
+    .xra-regen-menu {
+      background: #141b28;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+      display: grid;
+      gap: 2px;
+      min-width: 150px;
+      padding: 6px;
+      position: absolute;
+      z-index: 10;
+    }
+
+    .xra-regen-menu[hidden] {
+      display: none;
+    }
+
+    .xra-regen-item {
+      background: transparent;
+      border: 0;
+      border-radius: 8px;
+      color: #cdd7e1;
+      cursor: pointer;
+      font: 600 13px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+      padding: 9px 10px;
+      text-align: left;
+      transition: background 120ms ease, color 120ms ease;
+    }
+
+    .xra-regen-item:hover {
+      background: rgba(29, 155, 240, 0.16);
+      color: #eaf5ff;
+    }
+
+    .xra-reply-loading .xra-reply-body {
+      color: #8b98a5;
+      font-style: italic;
+    }
+
+    .xra-reply-loading {
+      opacity: 0.85;
     }
 
     .xra-editor-wrap {

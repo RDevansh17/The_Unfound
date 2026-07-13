@@ -21,6 +21,14 @@ export interface AssistantSettings {
   includeEmoji: boolean;
 }
 
+export type ReplyVariant =
+  | "agree"
+  | "contrarian"
+  | "question"
+  | "supportive"
+  | "witty"
+  | "professional";
+
 export interface ReplyGenerationRequest {
   targetText: string;
   targetAuthor?: string;
@@ -32,6 +40,8 @@ export interface ReplyGenerationRequest {
   isRootMine: boolean;
   isReply: boolean;
   sourceUrl: string;
+  variant?: ReplyVariant;
+  count?: number;
 }
 
 export interface ReplyGenerationResult {
