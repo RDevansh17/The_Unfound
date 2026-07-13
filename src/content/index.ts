@@ -502,7 +502,8 @@ function showPanel(
 
   const mark = document.createElement("div");
   mark.className = "xra-panel-mark";
-  mark.textContent = "XR";
+  mark.innerHTML =
+    '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden="true"><path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5v8A2.5 2.5 0 0 1 18.5 16H9l-4.2 3.6A1 1 0 0 1 3 18.8V5.5Z" fill="currentColor"/></svg>';
 
   const titleWrap = document.createElement("div");
   const title = document.createElement("div");
@@ -511,9 +512,7 @@ function showPanel(
   const subtitle = document.createElement("div");
   subtitle.className = "xra-panel-subtitle";
   subtitle.textContent =
-    state.status === "ready"
-      ? "Pick a draft, edit it here, then insert or copy."
-      : "Crafting replies that feel human.";
+    state.status === "ready" ? "Select a draft to edit and insert." : "Writing a few options…";
   titleWrap.append(title, subtitle);
   header.append(mark, titleWrap);
   panel.append(header);
@@ -571,7 +570,7 @@ function renderReadyState(
 
   const showList = (): void => {
     body.innerHTML = "";
-    subtitle.textContent = "Pick a draft, edit it here, then insert or copy.";
+    subtitle.textContent = "Select a draft to edit and insert.";
 
     const list = document.createElement("div");
     list.className = "xra-reply-list";
@@ -584,15 +583,24 @@ function renderReadyState(
       const topRow = document.createElement("div");
       topRow.className = "xra-reply-top";
 
+      const meta = document.createElement("span");
+      meta.className = "xra-reply-meta";
+
+      const num = document.createElement("span");
+      num.className = "xra-reply-num";
+      num.textContent = String(index + 1).padStart(2, "0");
+
       const label = document.createElement("span");
       label.className = "xra-reply-label";
       label.textContent = labels[index] || `Option ${index + 1}`;
 
+      meta.append(num, label);
+
       const action = document.createElement("span");
       action.className = "xra-reply-action";
-      action.textContent = "Edit / Insert";
+      action.textContent = "Edit";
 
-      topRow.append(label, action);
+      topRow.append(meta, action);
 
       const bodyText = document.createElement("span");
       bodyText.className = "xra-reply-body";
@@ -612,7 +620,7 @@ function renderReadyState(
 
   const showEditor = (reply: string, label: string): void => {
     body.innerHTML = "";
-    subtitle.textContent = "Edit freely here, then Insert into X or Copy.";
+    subtitle.textContent = "Edit, then insert or copy.";
 
     const editorWrap = document.createElement("div");
     editorWrap.className = "xra-editor-wrap";
@@ -833,15 +841,16 @@ function injectStyles(): void {
   style.textContent = `
     .${BUTTON_CLASS} {
       align-items: center;
-      background: #1d9bf0;
+      background: linear-gradient(135deg, #1d9bf0, #0b5f9e);
       border: 0;
       border-radius: 999px;
-      box-shadow: 0 8px 20px rgba(29, 155, 240, 0.28);
+      box-shadow: 0 6px 16px rgba(29, 155, 240, 0.3);
       color: #fff;
       cursor: pointer;
       display: inline-flex;
       flex-shrink: 0;
-      font: 700 12px/1.2 "Avenir Next", "Segoe UI", sans-serif;
+      font: 700 12px/1.2 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+      gap: 6px;
       margin: 0 8px;
       padding: 8px 14px;
       position: relative;
@@ -850,7 +859,7 @@ function injectStyles(): void {
     }
 
     .${BUTTON_CLASS}:hover {
-      background: #1a8cd8;
+      box-shadow: 0 10px 22px rgba(29, 155, 240, 0.42);
     }
 
     .xra-article-button-wrap {
@@ -877,23 +886,22 @@ function injectStyles(): void {
     }
 
     #${PANEL_ID} {
-      backdrop-filter: blur(18px);
-      background:
-        radial-gradient(circle at top right, rgba(29, 155, 240, 0.18), transparent 34%),
-        linear-gradient(180deg, rgba(10, 16, 26, 0.98), rgba(7, 11, 18, 0.98));
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 24px;
-      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
-      color: #f7f9f9;
+      -webkit-font-smoothing: antialiased;
+      backdrop-filter: blur(20px);
+      background: linear-gradient(180deg, rgba(15, 20, 30, 0.98), rgba(9, 12, 19, 0.98));
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 20px;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      color: #eef3f8;
       display: flex;
       flex-direction: column;
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-family: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
       opacity: 0;
       overflow: hidden;
       position: fixed;
-      transform: translateY(10px) scale(0.98);
-      transition: opacity 160ms ease, transform 160ms ease;
-      width: min(420px, calc(100vw - 32px));
+      transform: translateY(8px) scale(0.99);
+      transition: opacity 150ms ease, transform 150ms ease;
+      width: min(408px, calc(100vw - 32px));
       z-index: 2147483647;
     }
 
@@ -904,70 +912,74 @@ function injectStyles(): void {
 
     .xra-panel-header {
       align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
       display: flex;
-      gap: 12px;
-      padding: 18px 48px 14px 18px;
+      gap: 11px;
+      padding: 16px 48px 15px 18px;
     }
 
     .xra-panel-mark {
       align-items: center;
-      background: linear-gradient(145deg, #1d9bf0, #0b5f9e);
-      border-radius: 12px;
+      background: linear-gradient(150deg, #1d9bf0, #0b5f9e);
+      border-radius: 10px;
+      box-shadow: 0 6px 16px rgba(29, 155, 240, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.25);
       color: #fff;
       display: grid;
       flex-shrink: 0;
-      font-size: 11px;
-      font-weight: 800;
-      height: 36px;
-      justify-content: center;
-      letter-spacing: 0.04em;
-      width: 36px;
-    }
-
-    .xra-panel-title {
-      font-size: 17px;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-    }
-
-    .xra-panel-subtitle {
-      color: #8b98a5;
-      font-size: 12px;
-      line-height: 1.4;
-      margin-top: 3px;
-    }
-
-    .xra-panel-close {
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 10px;
-      color: #cfd9de;
-      cursor: pointer;
-      font-size: 20px;
       height: 32px;
-      line-height: 1;
-      position: absolute;
-      right: 12px;
-      top: 12px;
+      place-items: center;
       width: 32px;
     }
 
+    .xra-panel-title {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .xra-panel-subtitle {
+      color: #6b7787;
+      font-size: 12px;
+      line-height: 1.4;
+      margin-top: 2px;
+    }
+
+    .xra-panel-close {
+      align-items: center;
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 9px;
+      color: #9aa7b6;
+      cursor: pointer;
+      display: grid;
+      font-size: 18px;
+      height: 30px;
+      line-height: 1;
+      place-items: center;
+      position: absolute;
+      right: 14px;
+      top: 14px;
+      transition: background 120ms ease, color 120ms ease;
+      width: 30px;
+    }
+
     .xra-panel-close:hover {
-      background: rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.08);
+      color: #eef3f8;
     }
 
     .xra-panel-body {
       flex: 1 1 auto;
       overflow: auto;
-      padding: 0 14px 14px;
+      padding: 14px;
     }
 
     .xra-panel-footer {
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-      color: #8b98a5;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      color: #6b7787;
       font-size: 11px;
-      letter-spacing: 0.02em;
-      padding: 12px 18px 14px;
+      letter-spacing: 0.01em;
+      padding: 11px 18px 13px;
     }
 
     .xra-loading-block {
@@ -981,7 +993,7 @@ function injectStyles(): void {
 
     .xra-spinner {
       animation: xra-spin 0.8s linear infinite;
-      border: 2px solid rgba(255, 255, 255, 0.12);
+      border: 2px solid rgba(255, 255, 255, 0.1);
       border-radius: 999px;
       border-top-color: #1d9bf0;
       height: 22px;
@@ -996,39 +1008,56 @@ function injectStyles(): void {
 
     .xra-loading,
     .xra-error {
-      color: #cfd9de;
+      color: #9aa7b6;
       font-size: 14px;
-      line-height: 1.45;
+      line-height: 1.5;
       margin: 0;
     }
 
     .xra-error {
-      color: #ffb4b4;
+      color: #fb7185;
       padding: 12px 6px;
     }
 
     .xra-reply-list {
       display: grid;
-      gap: 10px;
+      gap: 9px;
     }
 
     .xra-reply-choice {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 18px;
-      color: #f7f9f9;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      color: #eef3f8;
       cursor: pointer;
       display: grid;
-      gap: 8px;
-      padding: 14px;
+      gap: 9px;
+      padding: 14px 15px;
+      position: relative;
       text-align: left;
-      transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+      transition: background 140ms ease, border-color 140ms ease;
+    }
+
+    .xra-reply-choice::before {
+      background: #1d9bf0;
+      border-radius: 0 3px 3px 0;
+      content: "";
+      left: 0;
+      opacity: 0;
+      position: absolute;
+      top: 14px;
+      bottom: 14px;
+      transition: opacity 140ms ease;
+      width: 3px;
     }
 
     .xra-reply-choice:hover {
-      background: rgba(29, 155, 240, 0.14);
-      border-color: rgba(29, 155, 240, 0.55);
-      transform: translateY(-1px);
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.16);
+    }
+
+    .xra-reply-choice:hover::before {
+      opacity: 1;
     }
 
     .xra-reply-top {
@@ -1037,25 +1066,47 @@ function injectStyles(): void {
       justify-content: space-between;
     }
 
-    .xra-reply-label {
-      color: #7dd3fc;
+    .xra-reply-meta {
+      align-items: baseline;
+      display: flex;
+      gap: 8px;
+    }
+
+    .xra-reply-num {
+      color: #4a5768;
       font-size: 11px;
       font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.05em;
+    }
+
+    .xra-reply-label {
+      color: #9aa7b6;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
     }
 
     .xra-reply-action {
-      background: rgba(29, 155, 240, 0.16);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 999px;
-      color: #e8f6ff;
+      color: #9aa7b6;
       font-size: 11px;
-      font-weight: 800;
-      padding: 4px 10px;
+      font-weight: 700;
+      opacity: 0;
+      padding: 4px 11px;
+      transition: opacity 140ms ease, color 140ms ease, border-color 140ms ease;
+    }
+
+    .xra-reply-choice:hover .xra-reply-action {
+      border-color: rgba(29, 155, 240, 0.5);
+      color: #6aa8ff;
+      opacity: 1;
     }
 
     .xra-reply-body {
-      font: 500 14px/1.45 "Avenir Next", "Segoe UI", sans-serif;
+      color: #dbe3ec;
+      font: 500 14px/1.5 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
     }
 
     .xra-editor-wrap {
@@ -1064,19 +1115,18 @@ function injectStyles(): void {
     }
 
     .xra-editor-label {
-      color: #7dd3fc;
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+      color: #9aa7b6;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
     }
 
     .xra-editor-textarea {
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      border-radius: 14px;
-      color: #f7f9f9;
-      font: 500 14px/1.5 "Avenir Next", "Segoe UI", sans-serif;
+      background: rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 13px;
+      color: #eef3f8;
+      font: 500 14px/1.55 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       min-height: 132px;
       padding: 12px 14px;
       resize: vertical;
@@ -1084,20 +1134,22 @@ function injectStyles(): void {
     }
 
     .xra-editor-textarea:focus {
+      background: rgba(0, 0, 0, 0.34);
       border-color: rgba(29, 155, 240, 0.7);
-      box-shadow: 0 0 0 3px rgba(29, 155, 240, 0.2);
+      box-shadow: 0 0 0 3px rgba(29, 155, 240, 0.18);
       outline: 0;
     }
 
     .xra-editor-counter {
-      color: #8b98a5;
+      color: #6b7787;
       font-size: 12px;
       font-weight: 700;
+      font-variant-numeric: tabular-nums;
       text-align: right;
     }
 
     .xra-editor-counter--over {
-      color: #ffb4b4;
+      color: #fb7185;
     }
 
     .xra-editor-actions {
@@ -1110,42 +1162,48 @@ function injectStyles(): void {
       border: 0;
       border-radius: 999px;
       cursor: pointer;
-      font: 700 13px/1 "Avenir Next", "Segoe UI", sans-serif;
-      padding: 10px 16px;
-      transition: filter 120ms ease, background 120ms ease;
+      font: 700 13px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+      padding: 11px 17px;
+      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+    }
+
+    .xra-btn:active {
+      transform: translateY(1px);
     }
 
     .xra-btn-primary {
-      background: #1d9bf0;
+      background: linear-gradient(135deg, #1d9bf0, #0b5f9e);
+      box-shadow: 0 10px 22px rgba(29, 155, 240, 0.28);
       color: #fff;
     }
 
     .xra-btn-primary:hover {
-      background: #1a8cd8;
+      box-shadow: 0 14px 28px rgba(29, 155, 240, 0.4);
     }
 
     .xra-btn-secondary {
-      background: rgba(255, 255, 255, 0.1);
-      color: #f7f9f9;
+      background: rgba(255, 255, 255, 0.08);
+      color: #eef3f8;
     }
 
     .xra-btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.14);
     }
 
     .xra-btn-ghost {
       background: transparent;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      color: #cfd9de;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #9aa7b6;
       margin-right: auto;
     }
 
     .xra-btn-ghost:hover {
-      background: rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.06);
+      color: #eef3f8;
     }
 
     .xra-editor-hint {
-      color: #8b98a5;
+      color: #6b7787;
       font-size: 11px;
       line-height: 1.45;
       margin: 2px 0 0;
