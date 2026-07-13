@@ -25,6 +25,7 @@ let lastTargetTextbox: HTMLElement | null = null;
 let panelAnchor: HTMLElement | null = null;
 let repositionHandler: (() => void) | null = null;
 let isInsertingReply = false;
+let sentWatchCleanup: (() => void) | null = null;
 
 injectStyles();
 scheduleScan();
@@ -558,6 +559,79 @@ function showPanel(
   repositionHandler = () => positionPanel(panel);
   window.addEventListener("resize", repositionHandler);
   window.addEventListener("scroll", repositionHandler, true);
+
+  startSentWatcher();
+}
+
+function startSentWatcher(): void {
+  stopSentWatcher();
+
+  const onClick = (event: Event): void => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const submitButton = target.closest<HTMLElement>(
+      '[data-testid="tweetButton"], [data-testid="tweetButtonInline"]'
+    );
+
+    if (submitButton && submitButton.getAttribute("aria-disabled") !== "true") {
+      confirmSendThenClose();
+    }
+  };
+
+  const onKeydown = (event: KeyboardEvent): void => {
+    // X posts a reply with Cmd/Ctrl + Enter.
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && (active.matches(TEXTBOX_SELECTOR) || active.closest('[role="dialog"]'))) {
+        confirmSendThenClose();
+      }
+    }
+  };
+
+  document.addEventListener("click", onClick, true);
+  document.addEventListener("keydown", onKeydown, true);
+
+  sentWatchCleanup = () => {
+    document.removeEventListener("click", onClick, true);
+    document.removeEventListener("keydown", onKeydown, true);
+  };
+}
+
+function stopSentWatcher(): void {
+  if (sentWatchCleanup) {
+    sentWatchCleanup();
+    sentWatchCleanup = null;
+  }
+}
+
+function confirmSendThenClose(): void {
+  // Only auto-close once the reply actually goes through:
+  // the composer clears or the reply dialog/textbox is removed.
+  const target = findReplyTextbox() || lastTargetTextbox;
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
+  const hadText = target ? readComposerText(target).trim().length > 0 : true;
+  const startedAt = Date.now();
+
+  const poll = (): void => {
+    const dialogGone = dialog ? !document.contains(dialog) : false;
+    const textboxGone = target ? !document.contains(target) : false;
+    const emptied =
+      hadText && target && document.contains(target) ? readComposerText(target).trim().length === 0 : false;
+
+    if (dialogGone || textboxGone || emptied) {
+      closePanel();
+      return;
+    }
+
+    if (Date.now() - startedAt < 4000) {
+      window.setTimeout(poll, 150);
+    }
+  };
+
+  window.setTimeout(poll, 150);
 }
 
 function renderReadyState(
@@ -728,6 +802,7 @@ function handlePanelEscape(event: KeyboardEvent): void {
 
 function closePanel(animate = true): void {
   window.removeEventListener("keydown", handlePanelEscape, true);
+  stopSentWatcher();
   if (repositionHandler) {
     window.removeEventListener("resize", repositionHandler);
     window.removeEventListener("scroll", repositionHandler, true);
