@@ -330,17 +330,23 @@ function findComposerButtonHost(textbox: HTMLElement): HTMLElement | null {
     return null;
   }
 
-  // Never inject controls into the contenteditable — that breaks typing/backspace.
-  const dialog = textbox.closest<HTMLElement>('[role="dialog"]');
-  const toolbar =
-    dialog?.querySelector<HTMLElement>('[data-testid="toolBar"]') ||
-    textbox
-      .closest<HTMLElement>("form, [data-testid='tweetTextarea_0']")
-      ?.parentElement?.parentElement?.parentElement?.querySelector<HTMLElement>('[data-testid="toolBar"]') ||
-    document.querySelector<HTMLElement>('[role="dialog"] [data-testid="toolBar"]');
+  const dialog =
+    textbox.closest<HTMLElement>('[role="dialog"]') ||
+    document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
 
-  const mountParent = toolbar?.parentElement;
-  if (!mountParent || mountParent.isContentEditable || mountParent.closest("[contenteditable='true']")) {
+  // Mount beside the Reply/Post button, never inside the text editor chrome.
+  const tweetButton =
+    dialog?.querySelector<HTMLElement>('[data-testid="tweetButton"]') ||
+    dialog?.querySelector<HTMLElement>('[data-testid="tweetButtonInline"]') ||
+    document.querySelector<HTMLElement>('[role="dialog"] [data-testid="tweetButton"]') ||
+    document.querySelector<HTMLElement>('[role="dialog"] [data-testid="tweetButtonInline"]');
+
+  const mountParent = tweetButton?.parentElement;
+  if (!mountParent) {
+    return null;
+  }
+
+  if (mountParent.isContentEditable || mountParent.closest('[contenteditable="true"]')) {
     return null;
   }
 
@@ -350,8 +356,8 @@ function findComposerButtonHost(textbox: HTMLElement): HTMLElement | null {
   }
 
   const host = document.createElement("div");
-  host.className = "xra-composer-button-host";
-  mountParent.insertBefore(host, toolbar);
+  host.className = "xra-composer-button-host xra-composer-button-host--action";
+  mountParent.insertBefore(host, tweetButton);
   return host;
 }
 
@@ -427,103 +433,38 @@ function isExactDuplicate(text: string, expected: string): boolean {
   return value === `${expected}${expected}` || (normalizeReplyText(value) === expected && value !== expected);
 }
 
-function pasteViaClipboardEvent(editable: HTMLElement, text: string): void {
-  const dataTransfer = new DataTransfer();
-  dataTransfer.setData("text/plain", text);
-  editable.dispatchEvent(
-    new ClipboardEvent("paste", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      clipboardData: dataTransfer
-    })
-  );
-}
-
-function pasteViaBeforeInput(editable: HTMLElement, text: string): void {
-  const dataTransfer = new DataTransfer();
-  dataTransfer.setData("text/plain", text);
-  editable.dispatchEvent(
-    new InputEvent("beforeinput", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      inputType: "insertFromPaste",
-      data: text,
-      dataTransfer
-    })
-  );
-}
-
-async function clearComposer(editable: HTMLElement): Promise<void> {
+async function insertWithExecCommand(editable: HTMLElement, text: string): Promise<void> {
+  // Click + focus so X's Lexical editor becomes the active editing host.
+  editable.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  editable.click();
   editable.focus();
+  await sleep(30);
+
+  // One replace only. Mixing paste/beforeinput creates uneditable ghost text on X.
   document.execCommand("selectAll", false);
-
-  const shouldFallbackDelete = editable.dispatchEvent(
-    new InputEvent("beforeinput", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      inputType: "deleteByCut"
-    })
-  );
-
-  if (shouldFallbackDelete) {
-    document.execCommand("delete", false);
-  }
-
-  await sleep(20);
+  document.execCommand("insertText", false, text);
+  await sleep(50);
 }
 
 async function setComposerText(target: HTMLElement, reply: string): Promise<void> {
   const clean = normalizeReplyText(reply);
   const editable = getEditableRoot(target);
 
-  // X's editor (Lexical/Draft) duplicates text if we mix insertText + paste,
-  // or if we manually move the caret with Range APIs.
-  // Strategy: clear once, insert once, verify, repair only by clear+single insert.
-  editable.focus();
-  await sleep(16);
-  await clearComposer(editable);
-
-  pasteViaClipboardEvent(editable, clean);
-  await sleep(50);
+  await insertWithExecCommand(editable, clean);
 
   let current = readComposerText(editable).trim();
 
-  if (!current) {
-    await clearComposer(editable);
-    pasteViaBeforeInput(editable, clean);
-    await sleep(50);
-    current = readComposerText(editable).trim();
-  }
-
+  // If X mirrored the payload, select both copies and replace with one clean string.
   if (isExactDuplicate(current, clean)) {
-    await clearComposer(editable);
-    pasteViaClipboardEvent(editable, clean);
-    await sleep(50);
+    await insertWithExecCommand(editable, clean);
     current = readComposerText(editable).trim();
   }
 
-  if (isExactDuplicate(current, clean)) {
-    await clearComposer(editable);
-    pasteViaBeforeInput(editable, clean);
-    await sleep(50);
-    current = readComposerText(editable).trim();
-  }
-
-  if (!current) {
-    // Last resort only on empty editors. If it duplicates, immediately repair via paste.
-    document.execCommand("insertText", false, clean);
-    await sleep(40);
-    current = readComposerText(editable).trim();
-    if (isExactDuplicate(current, clean)) {
-      await clearComposer(editable);
-      pasteViaClipboardEvent(editable, clean);
-      await sleep(50);
-    }
-  }
-
+  // Blur/focus resyncs Lexical selection so backspace targets the visible text.
+  editable.blur();
+  await sleep(20);
+  editable.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  editable.click();
   editable.focus();
 }
 
@@ -804,10 +745,13 @@ function injectStyles(): void {
       align-items: center;
       display: flex;
       justify-content: flex-start;
-      margin: 0 0 10px;
-      padding: 0 12px;
+      margin: 0 8px 0 0;
       position: relative;
       z-index: 6;
+    }
+
+    .xra-composer-button-host--action {
+      margin: 0 10px 0 0;
     }
 
     .xra-composer-button {
