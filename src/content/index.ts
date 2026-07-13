@@ -15,12 +15,15 @@ type ReplyContext = {
 };
 
 const ARTICLE_SELECTOR = 'article[data-testid="tweet"]';
-const TEXTBOX_SELECTOR = '[data-testid^="tweetTextarea_"][role="textbox"], div[role="textbox"][contenteditable="true"]';
+const TEXTBOX_SELECTOR =
+  '[data-testid^="tweetTextarea_"][role="textbox"], div[role="textbox"][contenteditable="true"]';
 const BUTTON_CLASS = "xra-ai-reply-button";
 const PANEL_ID = "xra-panel";
 
 let scanTimer: number | undefined;
 let lastTargetTextbox: HTMLElement | null = null;
+let panelAnchor: HTMLElement | null = null;
+let repositionHandler: (() => void) | null = null;
 
 injectStyles();
 scheduleScan();
@@ -218,12 +221,13 @@ async function openReplyComposer(article: HTMLElement): Promise<HTMLElement | nu
   const existing = getActiveTextbox();
   const replyButton =
     article.querySelector<HTMLElement>('[data-testid="reply"]') ||
-    Array.from(article.querySelectorAll<HTMLElement>('button[aria-label*="Reply"], div[role="button"][aria-label*="Reply"]'))[0];
+    Array.from(
+      article.querySelectorAll<HTMLElement>('button[aria-label*="Reply"], div[role="button"][aria-label*="Reply"]')
+    )[0];
 
   replyButton?.click();
 
-  const textbox = await waitForTextbox(existing);
-  return textbox;
+  return waitForTextbox(existing);
 }
 
 async function waitForTextbox(previous: HTMLElement | null): Promise<HTMLElement | null> {
@@ -339,17 +343,20 @@ function showPanel(
     | { status: "error"; message: string }
     | { status: "ready"; replies: string[]; onSelect: (reply: string) => void }
 ): void {
-  document.getElementById(PANEL_ID)?.remove();
+  closePanel(false);
+  panelAnchor = anchor;
 
-  const panel = document.createElement("div");
+  const panel = document.createElement("aside");
   panel.id = PANEL_ID;
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-label", "AI reply drafts");
 
   const close = document.createElement("button");
   close.type = "button";
   close.className = "xra-panel-close";
   close.setAttribute("aria-label", "Close");
   close.textContent = "×";
-  close.addEventListener("click", () => panel.remove());
+  close.addEventListener("click", () => closePanel());
   panel.append(close);
 
   const header = document.createElement("div");
@@ -365,10 +372,16 @@ function showPanel(
   title.textContent = "Reply drafts";
   const subtitle = document.createElement("div");
   subtitle.className = "xra-panel-subtitle";
-  subtitle.textContent = "Pick one, edit if needed, then post.";
+  subtitle.textContent =
+    state.status === "ready"
+      ? "Click a draft to insert it. Your X Reply button stays free."
+      : "Crafting replies that feel human.";
   titleWrap.append(title, subtitle);
   header.append(mark, titleWrap);
   panel.append(header);
+
+  const body = document.createElement("div");
+  body.className = "xra-panel-body";
 
   if (state.status === "ready") {
     const list = document.createElement("div");
@@ -380,38 +393,139 @@ function showPanel(
       replyButton.type = "button";
       replyButton.className = "xra-reply-choice";
 
+      const topRow = document.createElement("div");
+      topRow.className = "xra-reply-top";
+
       const label = document.createElement("span");
       label.className = "xra-reply-label";
       label.textContent = labels[index] || `Option ${index + 1}`;
 
-      const body = document.createElement("span");
-      body.className = "xra-reply-body";
-      body.textContent = reply;
+      const action = document.createElement("span");
+      action.className = "xra-reply-action";
+      action.textContent = "Insert";
 
-      replyButton.append(label, body);
+      topRow.append(label, action);
+
+      const bodyText = document.createElement("span");
+      bodyText.className = "xra-reply-body";
+      bodyText.textContent = reply;
+
+      replyButton.append(topRow, bodyText);
       replyButton.addEventListener("click", () => state.onSelect(reply));
       list.append(replyButton);
     });
 
-    panel.append(list);
+    body.append(list);
+  } else if (state.status === "loading") {
+    const loading = document.createElement("div");
+    loading.className = "xra-loading-block";
+
+    const spinner = document.createElement("div");
+    spinner.className = "xra-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+
+    const message = document.createElement("p");
+    message.className = "xra-loading";
+    message.textContent = state.message;
+
+    loading.append(spinner, message);
+    body.append(loading);
   } else {
     const message = document.createElement("p");
-    message.className = state.status === "error" ? "xra-error" : "xra-loading";
+    message.className = "xra-error";
     message.textContent = state.message;
-    panel.append(message);
+    body.append(message);
   }
 
+  panel.append(body);
+
+  const footer = document.createElement("div");
+  footer.className = "xra-panel-footer";
+  footer.textContent = "Review before posting · Esc to close";
+  panel.append(footer);
+
   document.body.append(panel);
-  positionPanel(panel, anchor);
+  positionPanel(panel);
+  requestAnimationFrame(() => panel.classList.add("xra-panel-visible"));
+
+  window.addEventListener("keydown", handlePanelEscape, true);
+  repositionHandler = () => positionPanel(panel);
+  window.addEventListener("resize", repositionHandler);
+  window.addEventListener("scroll", repositionHandler, true);
 }
 
-function positionPanel(panel: HTMLElement, anchor: HTMLElement | null): void {
-  const anchorRect = anchor?.getBoundingClientRect();
-  const top = anchorRect ? Math.min(anchorRect.bottom + 8, window.innerHeight - 260) : 80;
-  const left = anchorRect ? Math.min(anchorRect.left, window.innerWidth - 380) : window.innerWidth - 400;
+function handlePanelEscape(event: KeyboardEvent): void {
+  if (event.key === "Escape") {
+    closePanel();
+  }
+}
 
-  panel.style.top = `${Math.max(16, top)}px`;
-  panel.style.left = `${Math.max(16, left)}px`;
+function closePanel(animate = true): void {
+  window.removeEventListener("keydown", handlePanelEscape, true);
+  if (repositionHandler) {
+    window.removeEventListener("resize", repositionHandler);
+    window.removeEventListener("scroll", repositionHandler, true);
+    repositionHandler = null;
+  }
+
+  const panel = document.getElementById(PANEL_ID);
+  if (!panel) {
+    return;
+  }
+
+  if (!animate) {
+    panel.remove();
+    return;
+  }
+
+  panel.classList.remove("xra-panel-visible");
+  window.setTimeout(() => panel.remove(), 160);
+}
+
+function positionPanel(panel: HTMLElement): void {
+  const panelWidth = Math.min(420, window.innerWidth - 32);
+  const maxHeight = Math.min(window.innerHeight - 32, 720);
+  panel.style.width = `${panelWidth}px`;
+  panel.style.maxHeight = `${maxHeight}px`;
+
+  const dialog =
+    document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]') ||
+    document.querySelector<HTMLElement>('[role="dialog"]') ||
+    panelAnchor?.closest<HTMLElement>('[role="dialog"]') ||
+    null;
+
+  const dialogRect = dialog?.getBoundingClientRect();
+  const gap = 20;
+  const pad = 16;
+
+  let left = window.innerWidth - panelWidth - pad;
+  let top = pad;
+
+  if (dialogRect && dialogRect.width > 0) {
+    const spaceRight = window.innerWidth - dialogRect.right - gap - pad;
+    const spaceLeft = dialogRect.left - gap - pad;
+
+    if (spaceRight >= panelWidth) {
+      left = Math.round(dialogRect.right + gap);
+      top = clamp(Math.round(dialogRect.top), pad, window.innerHeight - maxHeight - pad);
+    } else if (spaceLeft >= panelWidth) {
+      left = Math.round(dialogRect.left - gap - panelWidth);
+      top = clamp(Math.round(dialogRect.top), pad, window.innerHeight - maxHeight - pad);
+    } else {
+      // Not enough side room: dock top-right of the viewport so the compose controls stay free.
+      left = window.innerWidth - panelWidth - pad;
+      top = pad;
+    }
+  }
+
+  panel.style.top = `${top}px`;
+  panel.style.left = `${left}px`;
+  panel.style.right = "auto";
+  panel.style.bottom = "auto";
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max));
 }
 
 function closePanelAfterDelay(): void {
@@ -421,7 +535,7 @@ function closePanelAfterDelay(): void {
   }
 
   panel.classList.add("xra-panel-success");
-  window.setTimeout(() => panel.remove(), 700);
+  window.setTimeout(() => closePanel(), 420);
 }
 
 function sendRuntimeMessage<T>(message: Record<string, unknown>): Promise<T> {
@@ -502,64 +616,121 @@ function injectStyles(): void {
     }
 
     #${PANEL_ID} {
-      backdrop-filter: blur(16px);
-      background: linear-gradient(180deg, rgba(12, 20, 32, 0.96), rgba(8, 14, 22, 0.98));
+      backdrop-filter: blur(18px);
+      background:
+        radial-gradient(circle at top right, rgba(29, 155, 240, 0.18), transparent 34%),
+        linear-gradient(180deg, rgba(10, 16, 26, 0.98), rgba(7, 11, 18, 0.98));
       border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 22px;
-      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
+      border-radius: 24px;
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
       color: #f7f9f9;
+      display: flex;
+      flex-direction: column;
       font-family: "Avenir Next", "Segoe UI", sans-serif;
-      max-width: 390px;
-      padding: 18px;
+      opacity: 0;
+      overflow: hidden;
       position: fixed;
-      width: min(390px, calc(100vw - 32px));
+      transform: translateY(10px) scale(0.98);
+      transition: opacity 160ms ease, transform 160ms ease;
+      width: min(420px, calc(100vw - 32px));
       z-index: 2147483647;
+    }
+
+    #${PANEL_ID}.xra-panel-visible {
+      opacity: 1;
+      transform: translateY(0) scale(1);
     }
 
     .xra-panel-header {
       align-items: center;
       display: flex;
       gap: 12px;
-      margin: 0 28px 14px 0;
+      padding: 18px 48px 14px 18px;
     }
 
     .xra-panel-mark {
       align-items: center;
-      background: #1d9bf0;
+      background: linear-gradient(145deg, #1d9bf0, #0b5f9e);
       border-radius: 12px;
       color: #fff;
       display: grid;
       flex-shrink: 0;
       font-size: 11px;
       font-weight: 800;
-      height: 34px;
+      height: 36px;
       justify-content: center;
       letter-spacing: 0.04em;
-      width: 34px;
+      width: 36px;
     }
 
     .xra-panel-title {
-      font-size: 16px;
+      font-size: 17px;
       font-weight: 800;
-      letter-spacing: -0.02em;
+      letter-spacing: -0.03em;
     }
 
     .xra-panel-subtitle {
       color: #8b98a5;
       font-size: 12px;
-      margin-top: 2px;
+      line-height: 1.4;
+      margin-top: 3px;
     }
 
     .xra-panel-close {
-      background: transparent;
-      border: 0;
-      color: #8b98a5;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      color: #cfd9de;
       cursor: pointer;
-      font-size: 22px;
+      font-size: 20px;
+      height: 32px;
       line-height: 1;
       position: absolute;
       right: 12px;
-      top: 10px;
+      top: 12px;
+      width: 32px;
+    }
+
+    .xra-panel-close:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .xra-panel-body {
+      flex: 1 1 auto;
+      overflow: auto;
+      padding: 0 14px 14px;
+    }
+
+    .xra-panel-footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      color: #8b98a5;
+      font-size: 11px;
+      letter-spacing: 0.02em;
+      padding: 12px 18px 14px;
+    }
+
+    .xra-loading-block {
+      align-items: center;
+      display: grid;
+      gap: 12px;
+      justify-items: start;
+      min-height: 120px;
+      padding: 18px 8px;
+    }
+
+    .xra-spinner {
+      animation: xra-spin 0.8s linear infinite;
+      border: 2px solid rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      border-top-color: #1d9bf0;
+      height: 22px;
+      width: 22px;
+    }
+
+    @keyframes xra-spin {
+      to {
+        transform: rotate(360deg);
+      }
     }
 
     .xra-loading,
@@ -572,6 +743,7 @@ function injectStyles(): void {
 
     .xra-error {
       color: #ffb4b4;
+      padding: 12px 6px;
     }
 
     .xra-reply-list {
@@ -582,20 +754,26 @@ function injectStyles(): void {
     .xra-reply-choice {
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 16px;
+      border-radius: 18px;
       color: #f7f9f9;
       cursor: pointer;
       display: grid;
-      gap: 6px;
-      padding: 12px 14px;
+      gap: 8px;
+      padding: 14px;
       text-align: left;
-      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+      transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
     }
 
     .xra-reply-choice:hover {
-      background: rgba(29, 155, 240, 0.16);
+      background: rgba(29, 155, 240, 0.14);
       border-color: rgba(29, 155, 240, 0.55);
       transform: translateY(-1px);
+    }
+
+    .xra-reply-top {
+      align-items: center;
+      display: flex;
+      justify-content: space-between;
     }
 
     .xra-reply-label {
@@ -606,8 +784,17 @@ function injectStyles(): void {
       text-transform: uppercase;
     }
 
+    .xra-reply-action {
+      background: rgba(29, 155, 240, 0.16);
+      border-radius: 999px;
+      color: #e8f6ff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 10px;
+    }
+
     .xra-reply-body {
-      font: 500 14px/1.4 "Avenir Next", "Segoe UI", sans-serif;
+      font: 500 14px/1.45 "Avenir Next", "Segoe UI", sans-serif;
     }
 
     .xra-panel-success {
