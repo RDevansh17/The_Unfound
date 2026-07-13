@@ -52,6 +52,7 @@ let panelAnchor: HTMLElement | null = null;
 let repositionHandler: (() => void) | null = null;
 let isInsertingReply = false;
 let sentWatchCleanup: (() => void) | null = null;
+let watchedComposer: HTMLElement | null = null;
 
 injectStyles();
 scheduleScan();
@@ -141,6 +142,7 @@ function createAssistantButton(label: string): HTMLButtonElement {
 }
 
 async function openAssistantForArticle(article: HTMLElement, anchor: HTMLElement): Promise<void> {
+  watchedComposer = null;
   const context = gatherReplyContext(article);
   if (!context.targetText) {
     showPanel(anchor, {
@@ -165,6 +167,7 @@ async function openAssistantForArticle(article: HTMLElement, anchor: HTMLElement
 }
 
 async function openAssistantForComposer(textbox: HTMLElement, anchor: HTMLElement): Promise<void> {
+  watchedComposer = textbox;
   const article = findNearestContextArticle(textbox);
   const context = article ? gatherReplyContext(article) : getFallbackContext();
   await generateAndShowReplies(context, anchor, textbox);
@@ -175,6 +178,7 @@ async function generateAndShowReplies(
   anchor: HTMLElement,
   textbox: HTMLElement
 ): Promise<void> {
+  watchedComposer = textbox;
   if (!context.targetText.trim()) {
     showPanel(anchor, {
       status: "error",
@@ -551,6 +555,7 @@ function insertReply(textbox: HTMLElement, reply: string): void {
     try {
       await setComposerText(target, reply);
       lastTargetTextbox = target;
+      watchedComposer = target;
       closePanelAfterDelay();
     } finally {
       window.setTimeout(() => {
@@ -768,10 +773,27 @@ function startSentWatcher(): void {
     }
   };
 
+  // Close the panel if the reply composer/dialog is dismissed (e.g. the X close button).
+  let dismissTimer: number | undefined;
+  const observer = new MutationObserver(() => {
+    window.clearTimeout(dismissTimer);
+    dismissTimer = window.setTimeout(() => {
+      if (!watchedComposer) {
+        return;
+      }
+      if (!document.contains(watchedComposer) && !findReplyTextbox()) {
+        closePanel();
+      }
+    }, 200);
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+
   document.addEventListener("click", onClick, true);
   document.addEventListener("keydown", onKeydown, true);
 
   sentWatchCleanup = () => {
+    window.clearTimeout(dismissTimer);
+    observer.disconnect();
     document.removeEventListener("click", onClick, true);
     document.removeEventListener("keydown", onKeydown, true);
   };
