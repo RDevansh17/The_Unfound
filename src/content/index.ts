@@ -433,39 +433,45 @@ function isExactDuplicate(text: string, expected: string): boolean {
   return value === `${expected}${expected}` || (normalizeReplyText(value) === expected && value !== expected);
 }
 
-async function insertWithExecCommand(editable: HTMLElement, text: string): Promise<void> {
-  // Click + focus so X's Lexical editor becomes the active editing host.
-  editable.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-  editable.click();
-  editable.focus();
-  await sleep(30);
+function selectAllInEditable(editable: HTMLElement): void {
+  const selection = window.getSelection();
+  if (!selection) {
+    return;
+  }
 
-  // One replace only. Mixing paste/beforeinput creates uneditable ghost text on X.
-  document.execCommand("selectAll", false);
-  document.execCommand("insertText", false, text);
-  await sleep(50);
+  const range = document.createRange();
+  range.selectNodeContents(editable);
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 async function setComposerText(target: HTMLElement, reply: string): Promise<void> {
   const clean = normalizeReplyText(reply);
   const editable = getEditableRoot(target);
 
-  await insertWithExecCommand(editable, clean);
+  // Canonical contenteditable insert that keeps X's editor in sync (backspace/typing work):
+  // focus, select existing content, then a single native insertText.
+  // Do NOT paste, dispatch synthetic input events, or blur/refocus afterwards —
+  // any of those desync the editor selection and break editing.
+  editable.focus();
+  await sleep(30);
 
-  let current = readComposerText(editable).trim();
+  selectAllInEditable(editable);
+  const inserted = document.execCommand("insertText", false, clean);
 
-  // If X mirrored the payload, select both copies and replace with one clean string.
-  if (isExactDuplicate(current, clean)) {
-    await insertWithExecCommand(editable, clean);
-    current = readComposerText(editable).trim();
+  if (!inserted) {
+    document.execCommand("selectAll", false);
+    document.execCommand("insertText", false, clean);
   }
 
-  // Blur/focus resyncs Lexical selection so backspace targets the visible text.
-  editable.blur();
-  await sleep(20);
-  editable.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-  editable.click();
-  editable.focus();
+  await sleep(30);
+
+  // Only repair if X mirrored the text into two copies. One more single insert, nothing else.
+  if (isExactDuplicate(readComposerText(editable).trim(), clean)) {
+    editable.focus();
+    selectAllInEditable(editable);
+    document.execCommand("insertText", false, clean);
+  }
 }
 
 function showPanel(
