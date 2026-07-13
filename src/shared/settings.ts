@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS: AssistantSettings = {
   baseUrl: "https://api.openai.com/v1",
   tone: "friendly",
   replyLength: "short",
+  replyCount: 3,
   personalStyle: "",
   includeEmoji: false
 };

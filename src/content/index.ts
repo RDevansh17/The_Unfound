@@ -4,8 +4,14 @@ type RuntimeResponse<T = unknown> = {
   error?: string;
 };
 
+type ReplyDraft = {
+  text: string;
+  recommended?: boolean;
+  rationale?: string;
+};
+
 type ReplyGenerationResult = {
-  replies: string[];
+  replies: ReplyDraft[];
 };
 
 type ReplyContext = {
@@ -18,6 +24,7 @@ type ReplyContext = {
   rootHandle?: string;
   isRootMine: boolean;
   isReply: boolean;
+  visibility?: "high" | "low";
   sourceUrl: string;
 };
 
@@ -206,7 +213,7 @@ async function generateAndShowReplies(
 
     showPanel(anchor, {
       status: "ready",
-      replies: result.replies,
+      drafts: result.replies,
       contextLabel: describeContextLabel(context),
       onSelect: (reply) => insertReply(textbox, reply),
       regenerate: async (variant) => {
@@ -214,7 +221,7 @@ async function generateAndShowReplies(
           type: "GENERATE_REPLIES",
           payload: { ...context, variant, count: 1 }
         });
-        return regen.replies[0] || "";
+        return regen.replies[0]?.text || "";
       }
     });
   } catch (error) {
@@ -336,8 +343,48 @@ function gatherReplyContext(targetArticle: HTMLElement): ReplyContext {
     rootHandle,
     isRootMine: Boolean(own && rootHandle && rootHandle === own),
     isReply,
+    visibility: getArticleVisibility(pageArticle || targetArticle),
     sourceUrl: location.href
   };
+}
+
+function parseCount(raw: string): number {
+  const cleaned = raw.replace(/,/g, "").trim();
+  const match = cleaned.match(/^([\d.]+)\s*([KMB])?$/i);
+  if (!match) {
+    return 0;
+  }
+  const value = parseFloat(match[1]);
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  const suffix = match[2]?.toUpperCase();
+  const multiplier = suffix === "B" ? 1e9 : suffix === "M" ? 1e6 : suffix === "K" ? 1e3 : 1;
+  return value * multiplier;
+}
+
+function getArticleVisibility(article: HTMLElement): "high" | "low" | undefined {
+  const group = article.querySelector<HTMLElement>('[role="group"]');
+  const label = group?.getAttribute("aria-label") || "";
+  const matches = Array.from(label.matchAll(/([\d.,]+)\s*(views?|likes?|reposts?|replies|bookmarks?)/gi));
+  if (matches.length === 0) {
+    return undefined;
+  }
+
+  const counts = new Map<string, number>();
+  for (const match of matches) {
+    const kind = match[2].toLowerCase().replace(/s$/, "").replace("replie", "reply");
+    counts.set(kind, parseCount(match[1]));
+  }
+
+  const views = counts.get("view") ?? 0;
+  const likes = counts.get("like") ?? 0;
+  const reposts = counts.get("repost") ?? 0;
+
+  if (views >= 20000 || likes >= 300 || reposts >= 100) {
+    return "high";
+  }
+  return "low";
 }
 
 function describeContextLabel(context: ReplyContext): string {
@@ -662,7 +709,7 @@ function showPanel(
     | { status: "error"; message: string }
     | {
         status: "ready";
-        replies: string[];
+        drafts: ReplyDraft[];
         contextLabel?: string;
         onSelect: (reply: string) => void;
         regenerate?: (variant: RegenVariant) => Promise<string>;
@@ -713,7 +760,7 @@ function showPanel(
   });
 
   if (state.status === "ready") {
-    renderReadyState(panel, body, subtitle, state.replies, state.onSelect, state.contextLabel, state.regenerate);
+    renderReadyState(panel, body, subtitle, state.drafts, state.onSelect, state.contextLabel, state.regenerate);
   } else if (state.status === "loading") {
     const loading = document.createElement("div");
     loading.className = "xra-loading-block";
@@ -855,13 +902,11 @@ function renderReadyState(
   panel: HTMLElement,
   body: HTMLElement,
   subtitle: HTMLElement,
-  replies: string[],
+  drafts: ReplyDraft[],
   onInsert: (reply: string) => void,
   contextLabel?: string,
   regenerate?: (variant: RegenVariant) => Promise<string>
 ): void {
-  const labels = ["Agree + add", "Nuance", "Question"];
-
   const showList = (): void => {
     body.innerHTML = "";
     subtitle.textContent = "Select a draft to edit and insert.";
@@ -880,12 +925,14 @@ function renderReadyState(
       list.append(context);
     }
 
-    replies.forEach((reply, index) => {
-      const label = labels[index] || `Option ${index + 1}`;
-      let current = reply;
+    drafts.forEach((draft, index) => {
+      let current = draft.text;
 
       const card = document.createElement("div");
       card.className = "xra-reply-choice";
+      if (draft.recommended) {
+        card.classList.add("xra-reply-choice--reco");
+      }
 
       const topRow = document.createElement("div");
       topRow.className = "xra-reply-top";
@@ -896,17 +943,37 @@ function renderReadyState(
       const num = document.createElement("span");
       num.className = "xra-reply-num";
       num.textContent = String(index + 1).padStart(2, "0");
+      meta.append(num);
 
       const labelEl = document.createElement("span");
       labelEl.className = "xra-reply-label";
-      labelEl.textContent = label;
 
-      meta.append(num, labelEl);
+      if (draft.recommended) {
+        const badge = document.createElement("span");
+        badge.className = "xra-reply-reco";
+        badge.textContent = "Recommended";
+        labelEl.append(badge);
+      }
+      meta.append(labelEl);
       topRow.append(meta);
 
       const bodyText = document.createElement("span");
       bodyText.className = "xra-reply-body";
       bodyText.textContent = current;
+
+      const why = document.createElement("span");
+      why.className = "xra-reply-why";
+      if (draft.recommended && draft.rationale) {
+        why.textContent = draft.rationale;
+      } else {
+        why.hidden = true;
+      }
+
+      const clearRecommendation = (): void => {
+        card.classList.remove("xra-reply-choice--reco");
+        labelEl.textContent = "";
+        why.hidden = true;
+      };
 
       const actions = document.createElement("div");
       actions.className = "xra-reply-actions";
@@ -935,7 +1002,7 @@ function renderReadyState(
       editBtn.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        showEditor(current, labelEl.textContent || label);
+        showEditor(current, draft.recommended ? "Recommended draft" : `Draft ${index + 1}`);
       });
 
       const insertBtn = document.createElement("button");
@@ -983,6 +1050,7 @@ function renderReadyState(
               if (next) {
                 current = next;
                 bodyText.textContent = next;
+                clearRecommendation();
                 labelEl.textContent = option.label;
               } else {
                 bodyText.textContent = previous;
@@ -1029,7 +1097,7 @@ function renderReadyState(
       }
 
       actions.append(insertBtn);
-      card.append(topRow, bodyText, actions);
+      card.append(topRow, bodyText, why, actions);
       list.append(card);
     });
 
@@ -1566,10 +1634,40 @@ function injectStyles(): void {
     }
 
     .xra-reply-label {
+      align-items: center;
       color: #9aa7b6;
+      display: inline-flex;
       font-size: 12px;
       font-weight: 700;
       letter-spacing: 0.01em;
+    }
+
+    .xra-reply-reco {
+      align-items: center;
+      background: rgba(29, 155, 240, 0.16);
+      border: 1px solid rgba(29, 155, 240, 0.4);
+      border-radius: 999px;
+      color: #7dd3fc;
+      display: inline-flex;
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      padding: 3px 8px;
+      text-transform: uppercase;
+    }
+
+    .xra-reply-choice--reco {
+      border-color: rgba(29, 155, 240, 0.32);
+    }
+
+    .xra-reply-choice--reco::before {
+      opacity: 1;
+    }
+
+    .xra-reply-why {
+      color: #7f8b9a;
+      font: 500 12px/1.45 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+      font-style: italic;
     }
 
     .xra-reply-body {

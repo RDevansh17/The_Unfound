@@ -17,9 +17,13 @@ export interface AssistantSettings {
   baseUrl: string;
   tone: ReplyTone;
   replyLength: "short" | "medium";
+  replyCount: number;
   personalStyle: string;
   includeEmoji: boolean;
 }
+
+export const MIN_REPLY_COUNT = 1;
+export const MAX_REPLY_COUNT = 6;
 
 export type ReplyVariant =
   | "agree"
@@ -40,13 +44,20 @@ export interface ReplyGenerationRequest {
   rootHandle?: string;
   isRootMine: boolean;
   isReply: boolean;
+  visibility?: "high" | "low";
   sourceUrl: string;
   variant?: ReplyVariant;
   count?: number;
 }
 
+export interface ReplyDraft {
+  text: string;
+  recommended: boolean;
+  rationale?: string;
+}
+
 export interface ReplyGenerationResult {
-  replies: string[];
+  replies: ReplyDraft[];
 }
 
 export type RuntimeRequest =

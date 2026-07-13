@@ -1,35 +1,43 @@
 import { PROVIDER_DEFAULTS } from "../shared/models";
 import { getSettings } from "../shared/settings";
-import type {
-  AssistantSettings,
-  ReplyGenerationRequest,
-  ReplyGenerationResult,
-  RuntimeRequest,
-  RuntimeResponse
+import {
+  MAX_REPLY_COUNT,
+  MIN_REPLY_COUNT,
+  type AssistantSettings,
+  type ReplyDraft,
+  type ReplyGenerationRequest,
+  type ReplyGenerationResult,
+  type RuntimeRequest,
+  type RuntimeResponse
 } from "../shared/types";
 
-const SYSTEM_PROMPT = `You are an elite X (Twitter) reply ghostwriter.
+const SYSTEM_PROMPT = `You are ghostwriting replies on X (Twitter) for a real person.
 
-Your job is to write replies that feel written by a sharp human, not an AI assistant.
+Everything you write must read like it was typed by a sharp, busy human — never like an AI, a brand, or a philosopher.
 
-Quality bar:
-- React to a specific detail, claim, or angle in the post
-- Sound conversational and natural
-- Add value: insight, agreement with a twist, a useful question, or a concrete observation
-- Prefer specificity over polish
-- Never sound corporate, fake-friendly, or motivational-poster
+How real replies actually sound:
+- They react to ONE specific thing in the post, not the whole topic
+- Plain, spoken language, the way you'd text a smart friend
+- Short. Most good replies are one or two lines.
+- They add a concrete point, a real example, or a genuine question — they don't summarize what the person already said
 
-Hard bans:
-- No hashtags
-- No "Great post!", "Love this!", "So true!", "This!", "Couldn't agree more"
-- No engagement bait ("Following for more", "Thread of the year")
-- No generic praise with zero substance
-- No em dashes unless the user's style asks for them
-- No quotes around the replies
-- No markdown
+Never do these (they instantly read as AI):
+- Aphorisms or life-lesson energy ("At the end of the day...", "The real X is Y")
+- "It's not just X, it's Y" or "This isn't about X, it's about Y" constructions
+- Grand, abstract, or philosophical takes
+- Motivational-poster, LinkedIn, or corporate voice
+- Empty praise: "Great post", "So true", "This 100%", "Couldn't agree more", "Love this"
+- Engagement bait, hashtags, quotes around the reply, markdown
+- Em dashes, unless the person's own style clearly uses them
+- Restating the post back to them
 
-Return ONLY valid JSON:
-{"replies":["reply 1","reply 2","reply 3"]}`;
+Return ONLY valid JSON in exactly this shape:
+{"variants":[{"text":"the reply","recommended":false},{"text":"the reply","recommended":true,"rationale":"one short line on why this one fits best"}]}
+
+Rules for the JSON:
+- Mark at most one variant "recommended", and only when more than one variant is requested.
+- "rationale" belongs only on the recommended variant and stays under 15 words.
+- "text" is the raw reply only: no quotes, no labels, no numbering.`;
 
 chrome.runtime.onMessage.addListener(
   (request: RuntimeRequest, _sender, sendResponse: (response: RuntimeResponse) => void) => {
@@ -67,11 +75,20 @@ async function handleRequest(request: RuntimeRequest): Promise<unknown> {
   throw new Error("Unsupported request.");
 }
 
+function resolveReplyCount(settings: AssistantSettings, request: ReplyGenerationRequest): number {
+  const raw = request.count ?? settings.replyCount ?? 3;
+  if (!Number.isFinite(raw)) {
+    return 3;
+  }
+  return Math.min(Math.max(Math.round(raw), MIN_REPLY_COUNT), MAX_REPLY_COUNT);
+}
+
 async function generateReplies(
   settings: AssistantSettings,
   request: ReplyGenerationRequest
 ): Promise<ReplyGenerationResult> {
-  const prompt = buildUserPrompt(settings, request);
+  const count = resolveReplyCount(settings, request);
+  const prompt = buildUserPrompt(settings, request, count);
   const model = settings.model || PROVIDER_DEFAULTS[settings.provider].model;
 
   switch (settings.provider) {
@@ -113,53 +130,41 @@ function handleOrName(handle?: string, name?: string, fallback = "them"): string
   return fallback;
 }
 
-function describeSituation(request: ReplyGenerationRequest): { situation: string; guidance: string } {
-  const target = handleOrName(request.targetHandle, request.targetAuthor, "the author");
-  const root = handleOrName(request.rootHandle, request.rootAuthor, "the original poster");
+type ContextKind = "stranger_post" | "warm_post" | "own_thread_reply";
 
-  if (!request.isReply) {
-    if (request.isTargetMine) {
-      return {
-        situation: "You are adding a follow-up to your OWN post.",
-        guidance: "Extend your original point with a fresh, valuable addition — do not just restate it."
-      };
-    }
-    return {
-      situation: `You are replying directly to ${target}'s post.`,
-      guidance: "React to their specific point and add something genuinely useful."
-    };
-  }
+function classifyContext(request: ReplyGenerationRequest): { kind: ContextKind; calibration: string } {
+  const target = handleOrName(request.targetHandle, request.targetAuthor, "them");
 
-  if (request.isRootMine && !request.isTargetMine) {
+  if (request.isReply && request.isRootMine && !request.isTargetMine) {
     return {
-      situation: `${target} replied to YOUR post. You are the original author responding to their comment.`,
-      guidance:
-        "Respond as the host of the thread: acknowledge their point directly, add insight or answer their question, and keep it warm — even if they disagree or criticize."
+      kind: "own_thread_reply",
+      calibration: `${target} replied under YOUR post. You are the host of this thread — answer their point directly, add something useful, and stay warm even if they push back. Never sound defensive or salesy.`
     };
   }
 
   if (request.isTargetMine) {
     return {
-      situation: "You are continuing your OWN thread (replying under your earlier comment).",
-      guidance: "Add the next useful point so the thread keeps building."
-    };
-  }
-
-  if (!request.isRootMine) {
-    return {
-      situation: `You are joining a conversation under ${root}'s post by replying to ${target}'s comment.`,
-      guidance: `Engage with ${target}'s specific comment and add value to the discussion — do not simply echo the original post.`
+      kind: "warm_post",
+      calibration:
+        "This is your own post or thread. Extend your original thought with a genuinely new point — never restate what you already said."
     };
   }
 
   return {
-    situation: `You are replying to ${target}.`,
-    guidance: "Add a specific, valuable reply."
+    kind: "stranger_post",
+    calibration:
+      "You do not know this person. Skip flattery and over-familiarity. Just react like a real reader who found it interesting or worth pushing back on."
   };
 }
 
-function capitalize(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+function describeVisibility(visibility: ReplyGenerationRequest["visibility"]): string | null {
+  if (visibility === "high") {
+    return "This post already has a lot of eyes on it, so replies get buried fast. Lead with the most interesting or useful thing and earn the read in the first few words.";
+  }
+  if (visibility === "low") {
+    return "This is not a huge post. A specific, genuine, human reply lands better here than anything clever or performative.";
+  }
+  return null;
 }
 
 function describeVariant(variant: NonNullable<ReplyGenerationRequest["variant"]>): string {
@@ -183,50 +188,44 @@ function describeVariant(variant: NonNullable<ReplyGenerationRequest["variant"]>
   }
 }
 
-function buildUserPrompt(settings: AssistantSettings, request: ReplyGenerationRequest): string {
+function buildUserPrompt(
+  settings: AssistantSettings,
+  request: ReplyGenerationRequest,
+  count: number
+): string {
   const length =
     settings.replyLength === "short"
-      ? "Keep each reply to 1 short sentence, ideally under 180 characters."
-      : "Keep each reply to 1-2 natural sentences, under 280 characters.";
-  const emojiRule = settings.includeEmoji
-    ? "Use at most one emoji, and only if it feels natural."
-    : "Do not use emoji.";
-  const style = settings.personalStyle.trim()
-    ? `Personal writing style to match closely:\n${settings.personalStyle.trim()}`
-    : "Write like a thoughtful founder/operator on X: clear, grounded, lightly conversational.";
+      ? "1 short line, under ~180 characters"
+      : "1-2 natural lines, under 280 characters";
+  const emojiRule = settings.includeEmoji ? "at most one emoji, and only if it feels natural" : "no emoji";
+  const persona = settings.personalStyle.trim()
+    ? settings.personalStyle.trim()
+    : "a thoughtful founder/operator who is active on X: clear, grounded, a little conversational, never hypey";
 
-  const { situation, guidance } = describeSituation(request);
-  const targetLabel = request.isReply ? "the comment you are replying to" : "the post you are replying to";
+  const { kind, calibration } = classifyContext(request);
+  const visibilityNote = describeVisibility(request.visibility);
   const target = handleOrName(request.targetHandle, request.targetAuthor, "the author");
-
-  const count = Math.min(Math.max(request.count ?? 3, 1), 3);
-  const taskLines = request.variant
-    ? [
-        "TASK",
-        `Write ${count} fresh reply option${count > 1 ? "s" : ""} that fit the context above.`,
-        describeVariant(request.variant),
-        "Make each option distinct from typical phrasing — vary the angle and wording."
-      ]
-    : [
-        "TASK",
-        "Write 3 distinct reply options that fit the context above:",
-        "1) A sharp agreement that adds one specific point",
-        "2) A thoughtful pushback, nuance, or alternate angle",
-        "3) A smart question or a practical takeaway"
-      ];
+  const targetLabel = request.isReply ? "Reply you are responding to" : "Post you are replying to";
 
   const lines = [
+    `You are ghostwriting an X reply for ${persona}.`,
+    "",
+    "VOICE RULES",
+    `- Tone: ${describeTone(settings.tone)}`,
+    `- Length: ${length}`,
+    `- Emoji: ${emojiRule}`,
+    "- Sound like a real person, not an assistant. No philosophy, no life lessons, no corporate voice.",
+    "",
     "CONTEXT",
-    situation,
-    guidance,
-    "",
-    ...taskLines,
-    "",
-    `Tone: ${describeTone(settings.tone)}`,
-    length,
-    emojiRule,
-    style
+    `This is a ${kind.replace(/_/g, " ")}${
+      request.visibility ? ` on a ${request.visibility}-visibility post` : ""
+    }.`,
+    calibration
   ];
+
+  if (visibilityNote) {
+    lines.push(visibilityNote);
+  }
 
   if (request.rootText && request.rootText.trim()) {
     lines.push(
@@ -240,13 +239,32 @@ function buildUserPrompt(settings: AssistantSettings, request: ReplyGenerationRe
 
   lines.push(
     "",
-    `${capitalize(targetLabel)} (by ${target}):`,
+    `${targetLabel} (by ${target}):`,
     `"""`,
     request.targetText.trim(),
     `"""`,
     "",
-    "Reference something concrete from the text above. Do not invent facts."
+    "TASK"
   );
+
+  if (request.variant) {
+    lines.push(
+      `Write ${count} reply option${count > 1 ? "s" : ""} in this specific style: ${describeVariant(
+        request.variant
+      )}`,
+      "Make it sound human and specific to the post above. Do not mark anything recommended."
+    );
+  } else {
+    lines.push(
+      `Generate exactly ${count} distinct reply variant${count > 1 ? "s" : ""} as JSON.`,
+      "Pick genuinely different angles based on what THIS specific post calls for — do not force a fixed agree / contrarian / question structure. Some posts want agreement with a new detail, some a sharp question, some a light disagreement, some just a quick real reaction.",
+      count > 1
+        ? "Mark exactly one variant as recommended and give a short rationale for why it fits best."
+        : "Do not mark it recommended."
+    );
+  }
+
+  lines.push("", "Reference something concrete from the text above. Do not invent facts.");
 
   return lines.join("\n");
 }
@@ -312,7 +330,7 @@ async function callAnthropic(settings: AssistantSettings, prompt: string): Promi
     },
     body: JSON.stringify({
       model: settings.model,
-      max_tokens: 700,
+      max_tokens: 1024,
       temperature: 0.85,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: prompt }]
@@ -376,23 +394,57 @@ async function parseProviderResponse(response: Response): Promise<any> {
   return data;
 }
 
+function cleanReplyText(value: unknown): string {
+  return dedupeRepeatedText(String(value ?? "").trim().replace(/^["']|["']$/g, ""));
+}
+
 function normalizeReplies(content: unknown): ReplyGenerationResult {
   if (typeof content !== "string") {
     throw new Error("The AI provider returned an empty response.");
   }
 
-  const parsed = JSON.parse(extractJsonObject(content)) as Partial<ReplyGenerationResult>;
-  const replies = Array.isArray(parsed.replies)
+  const parsed = JSON.parse(extractJsonObject(content)) as {
+    variants?: unknown;
+    replies?: unknown;
+  };
+
+  const rawList = Array.isArray(parsed.variants)
+    ? parsed.variants
+    : Array.isArray(parsed.replies)
     ? parsed.replies
-        .map((reply) => dedupeRepeatedText(String(reply).trim().replace(/^["']|["']$/g, "")))
-        .filter(Boolean)
     : [];
 
-  if (replies.length === 0) {
+  const drafts: ReplyDraft[] = rawList
+    .map((item): ReplyDraft => {
+      if (typeof item === "string") {
+        return { text: cleanReplyText(item), recommended: false };
+      }
+      const record = (item ?? {}) as Record<string, unknown>;
+      const rationale = record.rationale ? String(record.rationale).trim() : undefined;
+      return {
+        text: cleanReplyText(record.text),
+        recommended: Boolean(record.recommended),
+        rationale: rationale || undefined
+      };
+    })
+    .filter((draft) => draft.text);
+
+  if (drafts.length === 0) {
     throw new Error("The AI provider did not return any replies.");
   }
 
-  return { replies: replies.slice(0, 3) };
+  // Keep at most one recommended flag so the UI has a single clear pick.
+  let recommendedSeen = false;
+  for (const draft of drafts) {
+    if (draft.recommended && !recommendedSeen) {
+      recommendedSeen = true;
+    } else {
+      draft.recommended = false;
+      draft.rationale = undefined;
+    }
+  }
+
+  return { replies: drafts.slice(0, MAX_REPLY_COUNT) };
 }
 
 function dedupeRepeatedText(value: string): string {

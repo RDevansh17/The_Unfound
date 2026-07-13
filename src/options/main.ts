@@ -1,7 +1,13 @@
 import "../styles.css";
 import { PROVIDER_DEFAULTS, PROVIDER_MODELS } from "../shared/models";
 import { getSettings, saveSettings } from "../shared/settings";
-import type { AiProvider, AssistantSettings, ReplyTone } from "../shared/types";
+import {
+  MAX_REPLY_COUNT,
+  MIN_REPLY_COUNT,
+  type AiProvider,
+  type AssistantSettings,
+  type ReplyTone
+} from "../shared/types";
 
 const form = document.querySelector<HTMLFormElement>("#settings-form");
 const provider = document.querySelector<HTMLSelectElement>("#provider");
@@ -13,6 +19,7 @@ const baseUrl = document.querySelector<HTMLInputElement>("#baseUrl");
 const baseUrlRow = document.querySelector<HTMLElement>("#baseUrlRow");
 const tone = document.querySelector<HTMLSelectElement>("#tone");
 const replyLength = document.querySelector<HTMLSelectElement>("#replyLength");
+const replyCount = document.querySelector<HTMLSelectElement>("#replyCount");
 const includeEmoji = document.querySelector<HTMLInputElement>("#includeEmoji");
 const personalStyle = document.querySelector<HTMLTextAreaElement>("#personalStyle");
 const saveStatus = document.querySelector<HTMLElement>("#save-status");
@@ -57,7 +64,17 @@ apiKey?.addEventListener("input", updateSummary);
 form?.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  if (!provider || !model || !apiKey || !baseUrl || !tone || !replyLength || !includeEmoji || !personalStyle) {
+  if (
+    !provider ||
+    !model ||
+    !apiKey ||
+    !baseUrl ||
+    !tone ||
+    !replyLength ||
+    !replyCount ||
+    !includeEmoji ||
+    !personalStyle
+  ) {
     return;
   }
 
@@ -71,6 +88,7 @@ form?.addEventListener("submit", async (event) => {
     baseUrl: baseUrl.value.trim(),
     tone: tone.value as ReplyTone,
     replyLength: replyLength.value as AssistantSettings["replyLength"],
+    replyCount: clampReplyCount(replyCount.value),
     includeEmoji: includeEmoji.checked,
     personalStyle: personalStyle.value.trim()
   };
@@ -83,7 +101,17 @@ form?.addEventListener("submit", async (event) => {
 async function hydrate(): Promise<void> {
   const settings = await getSettings();
 
-  if (!provider || !model || !apiKey || !baseUrl || !tone || !replyLength || !includeEmoji || !personalStyle) {
+  if (
+    !provider ||
+    !model ||
+    !apiKey ||
+    !baseUrl ||
+    !tone ||
+    !replyLength ||
+    !replyCount ||
+    !includeEmoji ||
+    !personalStyle
+  ) {
     return;
   }
 
@@ -93,10 +121,19 @@ async function hydrate(): Promise<void> {
   baseUrl.value = settings.baseUrl || PROVIDER_DEFAULTS[settings.provider].baseUrl;
   tone.value = settings.tone;
   replyLength.value = settings.replyLength;
+  replyCount.value = String(clampReplyCount(settings.replyCount));
   includeEmoji.checked = settings.includeEmoji;
   personalStyle.value = settings.personalStyle;
   updateVisibility();
   updateSummary();
+}
+
+function clampReplyCount(value: string | number): number {
+  const parsed = typeof value === "number" ? value : parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return 3;
+  }
+  return Math.min(Math.max(Math.round(parsed), MIN_REPLY_COUNT), MAX_REPLY_COUNT);
 }
 
 function currentModelValue(): string {
