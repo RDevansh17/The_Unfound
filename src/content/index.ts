@@ -347,24 +347,48 @@ function showPanel(
   const close = document.createElement("button");
   close.type = "button";
   close.className = "xra-panel-close";
-  close.textContent = "x";
+  close.setAttribute("aria-label", "Close");
+  close.textContent = "×";
   close.addEventListener("click", () => panel.remove());
   panel.append(close);
 
+  const header = document.createElement("div");
+  header.className = "xra-panel-header";
+
+  const mark = document.createElement("div");
+  mark.className = "xra-panel-mark";
+  mark.textContent = "XR";
+
+  const titleWrap = document.createElement("div");
   const title = document.createElement("div");
   title.className = "xra-panel-title";
-  title.textContent = "X Reply Assistant";
-  panel.append(title);
+  title.textContent = "Reply drafts";
+  const subtitle = document.createElement("div");
+  subtitle.className = "xra-panel-subtitle";
+  subtitle.textContent = "Pick one, edit if needed, then post.";
+  titleWrap.append(title, subtitle);
+  header.append(mark, titleWrap);
+  panel.append(header);
 
   if (state.status === "ready") {
     const list = document.createElement("div");
     list.className = "xra-reply-list";
+    const labels = ["Agree + add", "Nuance", "Question"];
 
-    state.replies.forEach((reply) => {
+    state.replies.forEach((reply, index) => {
       const replyButton = document.createElement("button");
       replyButton.type = "button";
       replyButton.className = "xra-reply-choice";
-      replyButton.textContent = reply;
+
+      const label = document.createElement("span");
+      label.className = "xra-reply-label";
+      label.textContent = labels[index] || `Option ${index + 1}`;
+
+      const body = document.createElement("span");
+      body.className = "xra-reply-body";
+      body.textContent = reply;
+
+      replyButton.append(label, body);
       replyButton.addEventListener("click", () => state.onSelect(reply));
       list.append(replyButton);
     });
@@ -437,23 +461,24 @@ function injectStyles(): void {
   style.textContent = `
     .${BUTTON_CLASS} {
       align-items: center;
-      background: linear-gradient(135deg, #1d9bf0, #8b5cf6);
+      background: #1d9bf0;
       border: 0;
       border-radius: 999px;
+      box-shadow: 0 8px 20px rgba(29, 155, 240, 0.28);
       color: #fff;
       cursor: pointer;
       display: inline-flex;
       flex-shrink: 0;
-      font: 700 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: 700 12px/1.2 "Avenir Next", "Segoe UI", sans-serif;
       margin: 0 8px;
-      padding: 7px 12px;
+      padding: 8px 14px;
       position: relative;
       white-space: nowrap;
       z-index: 5;
     }
 
     .${BUTTON_CLASS}:hover {
-      filter: brightness(1.08);
+      background: #1a8cd8;
     }
 
     .xra-article-button-wrap {
@@ -466,7 +491,7 @@ function injectStyles(): void {
       align-items: center;
       display: flex;
       justify-content: flex-start;
-      margin: 0 0 8px;
+      margin: 0 0 10px;
       padding: 0 12px;
       position: relative;
       z-index: 6;
@@ -477,23 +502,52 @@ function injectStyles(): void {
     }
 
     #${PANEL_ID} {
-      background: #0f1419;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      border-radius: 18px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(16px);
+      background: linear-gradient(180deg, rgba(12, 20, 32, 0.96), rgba(8, 14, 22, 0.98));
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 22px;
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
       color: #f7f9f9;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      max-width: 360px;
-      padding: 16px;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      max-width: 390px;
+      padding: 18px;
       position: fixed;
-      width: min(360px, calc(100vw - 32px));
+      width: min(390px, calc(100vw - 32px));
       z-index: 2147483647;
     }
 
-    .xra-panel-title {
-      font-size: 15px;
+    .xra-panel-header {
+      align-items: center;
+      display: flex;
+      gap: 12px;
+      margin: 0 28px 14px 0;
+    }
+
+    .xra-panel-mark {
+      align-items: center;
+      background: #1d9bf0;
+      border-radius: 12px;
+      color: #fff;
+      display: grid;
+      flex-shrink: 0;
+      font-size: 11px;
       font-weight: 800;
-      margin: 0 32px 12px 0;
+      height: 34px;
+      justify-content: center;
+      letter-spacing: 0.04em;
+      width: 34px;
+    }
+
+    .xra-panel-title {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .xra-panel-subtitle {
+      color: #8b98a5;
+      font-size: 12px;
+      margin-top: 2px;
     }
 
     .xra-panel-close {
@@ -501,7 +555,8 @@ function injectStyles(): void {
       border: 0;
       color: #8b98a5;
       cursor: pointer;
-      font-size: 16px;
+      font-size: 22px;
+      line-height: 1;
       position: absolute;
       right: 12px;
       top: 10px;
@@ -511,7 +566,7 @@ function injectStyles(): void {
     .xra-error {
       color: #cfd9de;
       font-size: 14px;
-      line-height: 1.4;
+      line-height: 1.45;
       margin: 0;
     }
 
@@ -525,19 +580,34 @@ function injectStyles(): void {
     }
 
     .xra-reply-choice {
-      background: rgba(255, 255, 255, 0.07);
+      background: rgba(255, 255, 255, 0.04);
       border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 14px;
+      border-radius: 16px;
       color: #f7f9f9;
       cursor: pointer;
-      font: 500 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      padding: 12px;
+      display: grid;
+      gap: 6px;
+      padding: 12px 14px;
       text-align: left;
+      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
     }
 
     .xra-reply-choice:hover {
-      background: rgba(29, 155, 240, 0.22);
-      border-color: rgba(29, 155, 240, 0.5);
+      background: rgba(29, 155, 240, 0.16);
+      border-color: rgba(29, 155, 240, 0.55);
+      transform: translateY(-1px);
+    }
+
+    .xra-reply-label {
+      color: #7dd3fc;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .xra-reply-body {
+      font: 500 14px/1.4 "Avenir Next", "Segoe UI", sans-serif;
     }
 
     .xra-panel-success {

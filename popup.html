@@ -4,26 +4,40 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>X Reply Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Newsreader:opsz,wght@6..72,500;6..72,650&display=swap"
+      rel="stylesheet"
+    />
     <script type="module" src="/src/popup/main.ts"></script>
   </head>
   <body>
     <main class="popup">
-      <div class="badge">Private MVP</div>
-      <h1>X Reply Assistant</h1>
-      <p>
-        Draft high-quality replies for X posts and for replies people leave on your posts.
+      <div class="popup-top">
+        <div class="brand-mark" aria-hidden="true">XR</div>
+        <div>
+          <div class="badge">Private build</div>
+          <h1>Reply Assistant</h1>
+        </div>
+      </div>
+
+      <p class="popup-copy">
+        Draft sharper replies for posts and for comments on your posts — then you review and send.
       </p>
 
       <section class="status" id="status">Checking settings...</section>
 
       <div class="actions">
-        <button id="open-options" type="button">Open settings</button>
-        <a href="https://x.com" target="_blank" rel="noreferrer">Open X</a>
+        <button id="open-options" type="button">Settings</button>
+        <a class="ghost-link" href="https://x.com" target="_blank" rel="noreferrer">Open X</a>
       </div>
 
-      <p class="hint">
-        On X, click <strong>AI Reply</strong> on a post/reply or <strong>AI Draft</strong> inside a reply composer.
-      </p>
+      <ol class="howto">
+        <li>Save your API key in Settings</li>
+        <li>On X, click <strong>AI Reply</strong> or <strong>AI Draft</strong></li>
+        <li>Pick a draft, edit if needed, then post</li>
+      </ol>
     </main>
   </body>
 </html>

@@ -5,7 +5,7 @@ const SETTINGS_KEY = "xReplyAssistant.settings";
 export const DEFAULT_SETTINGS: AssistantSettings = {
   provider: "openai",
   apiKey: "",
-  model: "gpt-4o-mini",
+  model: "gpt-4o",
   baseUrl: "https://api.openai.com/v1",
   tone: "friendly",
   replyLength: "short",

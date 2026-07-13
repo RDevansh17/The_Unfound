@@ -1,11 +1,14 @@
 import "../styles.css";
-import { DEFAULT_SETTINGS, getSettings, saveSettings } from "../shared/settings";
+import { PROVIDER_DEFAULTS, PROVIDER_MODELS } from "../shared/models";
+import { getSettings, saveSettings } from "../shared/settings";
 import type { AiProvider, AssistantSettings, ReplyTone } from "../shared/types";
 
 const form = document.querySelector<HTMLFormElement>("#settings-form");
 const provider = document.querySelector<HTMLSelectElement>("#provider");
+const model = document.querySelector<HTMLSelectElement>("#model");
+const customModel = document.querySelector<HTMLInputElement>("#customModel");
+const customModelRow = document.querySelector<HTMLElement>("#customModelRow");
 const apiKey = document.querySelector<HTMLInputElement>("#apiKey");
-const model = document.querySelector<HTMLInputElement>("#model");
 const baseUrl = document.querySelector<HTMLInputElement>("#baseUrl");
 const baseUrlRow = document.querySelector<HTMLElement>("#baseUrlRow");
 const tone = document.querySelector<HTMLSelectElement>("#tone");
@@ -14,38 +17,39 @@ const includeEmoji = document.querySelector<HTMLInputElement>("#includeEmoji");
 const personalStyle = document.querySelector<HTMLTextAreaElement>("#personalStyle");
 const saveStatus = document.querySelector<HTMLElement>("#save-status");
 
-const providerDefaults: Record<AiProvider, Pick<AssistantSettings, "model" | "baseUrl">> = {
-  openai: { model: "gpt-4o-mini", baseUrl: "https://api.openai.com/v1" },
-  anthropic: { model: "claude-3-5-haiku-latest", baseUrl: "" },
-  gemini: { model: "gemini-1.5-flash", baseUrl: "" },
-  groq: { model: "llama-3.1-70b-versatile", baseUrl: "https://api.groq.com/openai/v1" },
-  "openai-compatible": { model: "gpt-4o-mini", baseUrl: "https://api.openai.com/v1" }
-};
-
 void hydrate();
 
 provider?.addEventListener("change", () => {
-  if (!provider || !model || !baseUrl) {
-    return;
+  const nextProvider = provider.value as AiProvider;
+  const defaults = PROVIDER_DEFAULTS[nextProvider];
+  populateModelOptions(nextProvider, defaults.model);
+  if (baseUrl) {
+    baseUrl.value = defaults.baseUrl;
   }
+  updateVisibility();
+});
 
-  const defaults = providerDefaults[provider.value as AiProvider];
-  model.value = defaults.model;
-  baseUrl.value = defaults.baseUrl;
-  updateBaseUrlVisibility();
+model?.addEventListener("change", () => {
+  updateVisibility();
+  if (model.value === "custom" && customModel) {
+    customModel.focus();
+  }
 });
 
 form?.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  if (!provider || !apiKey || !model || !baseUrl || !tone || !replyLength || !includeEmoji || !personalStyle) {
+  if (!provider || !model || !apiKey || !baseUrl || !tone || !replyLength || !includeEmoji || !personalStyle) {
     return;
   }
+
+  const selectedModel =
+    model.value === "custom" ? customModel?.value.trim() || PROVIDER_DEFAULTS["openai-compatible"].model : model.value;
 
   const settings: AssistantSettings = {
     provider: provider.value as AiProvider,
     apiKey: apiKey.value.trim(),
-    model: model.value.trim(),
+    model: selectedModel,
     baseUrl: baseUrl.value.trim(),
     tone: tone.value as ReplyTone,
     replyLength: replyLength.value as AssistantSettings["replyLength"],
@@ -60,28 +64,58 @@ form?.addEventListener("submit", async (event) => {
 async function hydrate(): Promise<void> {
   const settings = await getSettings();
 
-  if (!provider || !apiKey || !model || !baseUrl || !tone || !replyLength || !includeEmoji || !personalStyle) {
+  if (!provider || !model || !apiKey || !baseUrl || !tone || !replyLength || !includeEmoji || !personalStyle) {
     return;
   }
 
   provider.value = settings.provider;
+  populateModelOptions(settings.provider, settings.model);
   apiKey.value = settings.apiKey;
-  model.value = settings.model || providerDefaults[settings.provider].model;
-  baseUrl.value = settings.baseUrl || providerDefaults[settings.provider].baseUrl;
+  baseUrl.value = settings.baseUrl || PROVIDER_DEFAULTS[settings.provider].baseUrl;
   tone.value = settings.tone;
   replyLength.value = settings.replyLength;
   includeEmoji.checked = settings.includeEmoji;
   personalStyle.value = settings.personalStyle;
-  updateBaseUrlVisibility();
+  updateVisibility();
 }
 
-function updateBaseUrlVisibility(): void {
-  if (!provider || !baseUrlRow) {
+function populateModelOptions(nextProvider: AiProvider, selectedModel: string): void {
+  if (!model) {
+    return;
+  }
+
+  const options = PROVIDER_MODELS[nextProvider];
+  const knownValues = new Set(options.map((option) => option.value));
+  const useCustom = nextProvider === "openai-compatible" && selectedModel && !knownValues.has(selectedModel);
+
+  model.innerHTML = "";
+  options.forEach((option) => {
+    const element = document.createElement("option");
+    element.value = option.value;
+    element.textContent = option.label;
+    model.append(element);
+  });
+
+  if (useCustom) {
+    model.value = "custom";
+    if (customModel) {
+      customModel.value = selectedModel;
+    }
+  } else if (knownValues.has(selectedModel)) {
+    model.value = selectedModel;
+  } else {
+    model.value = PROVIDER_DEFAULTS[nextProvider].model;
+  }
+}
+
+function updateVisibility(): void {
+  if (!provider || !baseUrlRow || !customModelRow) {
     return;
   }
 
   const needsBaseUrl = provider.value === "openai-compatible";
   baseUrlRow.hidden = !needsBaseUrl;
+  customModelRow.hidden = !(provider.value === "openai-compatible" && model?.value === "custom");
 }
 
 function flashStatus(message: string): void {
@@ -94,5 +128,3 @@ function flashStatus(message: string): void {
     saveStatus.textContent = "";
   }, 2500);
 }
-
-void DEFAULT_SETTINGS;

@@ -19,15 +19,28 @@ chrome.runtime.sendMessage({ type: "GET_SETTINGS" }, (response: RuntimeResponse<
     return;
   }
 
-  status.textContent = response.data.apiKey
-    ? `${formatProvider(response.data.provider)} is configured.`
-    : "Add an AI provider API key before using the assistant.";
-  status.dataset.state = response.data.apiKey ? "ready" : "warning";
+  if (response.data.apiKey) {
+    status.textContent = `Ready · ${formatProvider(response.data.provider)} · ${response.data.model}`;
+    status.dataset.state = "ready";
+  } else {
+    status.textContent = "Add your API key in Settings to start drafting replies.";
+    status.dataset.state = "warning";
+  }
 });
 
 function formatProvider(provider: AssistantSettings["provider"]): string {
-  return provider
-    .split("-")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  switch (provider) {
+    case "openai":
+      return "OpenAI";
+    case "anthropic":
+      return "Anthropic";
+    case "gemini":
+      return "Gemini";
+    case "groq":
+      return "Groq";
+    case "openai-compatible":
+      return "Custom API";
+    default:
+      return provider;
+  }
 }

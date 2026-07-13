@@ -4,76 +4,114 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>X Reply Assistant Settings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Newsreader:opsz,wght@6..72,500;6..72,650&display=swap"
+      rel="stylesheet"
+    />
     <script type="module" src="/src/options/main.ts"></script>
   </head>
   <body>
     <main class="options-page">
-      <div class="eyebrow">X Reply Assistant</div>
-      <h1>AI reply settings</h1>
-      <p class="lede">
-        Configure your provider for private use now. For a public paid version, these calls should move behind a backend with auth, billing, and rate limits.
-      </p>
+      <header class="options-hero">
+        <div class="brand-mark" aria-hidden="true">XR</div>
+        <div>
+          <div class="eyebrow">X Reply Assistant</div>
+          <h1>Make every reply feel written by you</h1>
+          <p class="lede">
+            Pick your AI provider, choose a model, and tune tone + writing style. Replies stay under your control — the
+            extension only drafts.
+          </p>
+        </div>
+      </header>
 
       <form id="settings-form" class="card">
-        <label>
-          AI provider
-          <select id="provider" name="provider">
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="gemini">Google Gemini</option>
-            <option value="groq">Groq</option>
-            <option value="openai-compatible">OpenAI-compatible API</option>
-          </select>
-        </label>
+        <section class="section">
+          <div class="section-heading">
+            <h2>Provider</h2>
+            <p>Use your own API key for private use.</p>
+          </div>
 
-        <label>
-          API key
-          <input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="Paste your provider key" />
-        </label>
+          <div class="grid">
+            <label>
+              AI provider
+              <select id="provider" name="provider">
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="groq">Groq</option>
+                <option value="openai-compatible">OpenAI-compatible API</option>
+              </select>
+            </label>
 
-        <label>
-          Model
-          <input id="model" name="model" type="text" placeholder="gpt-4o-mini" />
-        </label>
+            <label>
+              Model
+              <select id="model" name="model"></select>
+            </label>
+          </div>
 
-        <label id="baseUrlRow">
-          Base URL
-          <input id="baseUrl" name="baseUrl" type="url" placeholder="https://api.openai.com/v1" />
-        </label>
-
-        <div class="grid">
-          <label>
-            Default tone
-            <select id="tone" name="tone">
-              <option value="friendly">Friendly</option>
-              <option value="professional">Professional</option>
-              <option value="witty">Witty</option>
-              <option value="supportive">Supportive</option>
-              <option value="contrarian">Contrarian</option>
-              <option value="concise">Short and punchy</option>
-              <option value="thought-leader">Thought leadership</option>
-              <option value="question">Ask a smart question</option>
-            </select>
+          <label id="customModelRow" hidden>
+            Custom model name
+            <input id="customModel" name="customModel" type="text" placeholder="my-custom-model" />
           </label>
 
           <label>
-            Reply length
-            <select id="replyLength" name="replyLength">
-              <option value="short">Short</option>
-              <option value="medium">Medium</option>
-            </select>
+            API key
+            <input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="Paste your provider key" />
           </label>
-        </div>
 
-        <label class="checkbox">
-          <input id="includeEmoji" name="includeEmoji" type="checkbox" />
-          Allow emoji when natural
-        </label>
+          <label id="baseUrlRow" hidden>
+            Base URL
+            <input id="baseUrl" name="baseUrl" type="url" placeholder="https://api.openai.com/v1" />
+          </label>
+        </section>
 
-        <label>
-          Personal writing style
-          <textarea id="personalStyle" name="personalStyle" rows="5" placeholder="Example: Be direct, helpful, a little warm, no hype, no hashtags."></textarea>
-        </label>
+        <section class="section">
+          <div class="section-heading">
+            <h2>Reply style</h2>
+            <p>These defaults apply to every draft.</p>
+          </div>
+
+          <div class="grid">
+            <label>
+              Default tone
+              <select id="tone" name="tone">
+                <option value="friendly">Friendly</option>
+                <option value="professional">Professional</option>
+                <option value="witty">Witty</option>
+                <option value="supportive">Supportive</option>
+                <option value="contrarian">Contrarian</option>
+                <option value="concise">Short and punchy</option>
+                <option value="thought-leader">Thought leadership</option>
+                <option value="question">Ask a smart question</option>
+              </select>
+            </label>
+
+            <label>
+              Reply length
+              <select id="replyLength" name="replyLength">
+                <option value="short">Short</option>
+                <option value="medium">Medium</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="checkbox">
+            <input id="includeEmoji" name="includeEmoji" type="checkbox" />
+            Allow one emoji when it feels natural
+          </label>
+
+          <label>
+            Personal writing style
+            <textarea
+              id="personalStyle"
+              name="personalStyle"
+              rows="5"
+              placeholder="Example: Direct, lightly warm, no hype, no hashtags. Talk like a founder who ships."
+            ></textarea>
+          </label>
+        </section>
 
         <div class="form-actions">
           <button type="submit">Save settings</button>
