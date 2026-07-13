@@ -3,121 +3,196 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>X Reply Assistant Settings</title>
+    <title>X Reply Assistant · Settings</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Newsreader:opsz,wght@6..72,500;6..72,650&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
     <script type="module" src="/src/options/main.ts"></script>
   </head>
-  <body>
+  <body class="theme-dark">
+    <div class="page-glow" aria-hidden="true"></div>
+
     <main class="options-page">
       <header class="options-hero">
-        <div class="brand-mark" aria-hidden="true">XR</div>
-        <div>
-          <div class="eyebrow">X Reply Assistant</div>
-          <h1>Make every reply feel written by you</h1>
-          <p class="lede">
-            Pick your AI provider, choose a model, and tune tone + writing style. Replies stay under your control — the
-            extension only drafts.
-          </p>
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
+              <path
+                d="M3 5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5v8A2.5 2.5 0 0 1 18.5 16H9l-4.2 3.6A1 1 0 0 1 3 18.8V5.5Z"
+                fill="currentColor"
+              />
+            </svg>
+          </div>
+          <div class="brand-text">
+            <span class="brand-name">Reply Assistant</span>
+            <span class="brand-sub">Settings</span>
+          </div>
         </div>
+        <h1>Make every reply feel written by you</h1>
+        <p class="lede">
+          Connect your AI provider, choose a model, and tune tone and voice. The extension only drafts —
+          you review and post.
+        </p>
       </header>
 
-      <form id="settings-form" class="card">
-        <section class="section">
-          <div class="section-heading">
-            <h2>Provider</h2>
-            <p>Use your own API key for private use.</p>
-          </div>
+      <div class="options-layout">
+        <form id="settings-form" class="stack">
+          <section class="card">
+            <div class="card-head">
+              <div class="card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                  <path d="M12 2 4 6v6c0 5 3.4 8.3 8 10 4.6-1.7 8-5 8-10V6l-8-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div>
+                <h2>Provider</h2>
+                <p>Your key is stored locally in Chrome sync storage.</p>
+              </div>
+            </div>
 
-          <div class="grid">
-            <label>
-              AI provider
-              <select id="provider" name="provider">
-                <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="gemini">Google Gemini</option>
-                <option value="groq">Groq</option>
-                <option value="openai-compatible">OpenAI-compatible API</option>
-              </select>
+            <div class="grid">
+              <label class="field">
+                <span class="field-label">AI provider</span>
+                <div class="select-wrap">
+                  <select id="provider" name="provider">
+                    <option value="openai">OpenAI</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="gemini">Google Gemini</option>
+                    <option value="groq">Groq</option>
+                    <option value="openai-compatible">OpenAI-compatible API</option>
+                  </select>
+                </div>
+              </label>
+
+              <label class="field">
+                <span class="field-label">Model</span>
+                <div class="select-wrap">
+                  <select id="model" name="model"></select>
+                </div>
+              </label>
+            </div>
+
+            <label class="field" id="customModelRow" hidden>
+              <span class="field-label">Custom model name</span>
+              <input id="customModel" name="customModel" type="text" placeholder="my-custom-model" />
             </label>
 
-            <label>
-              Model
-              <select id="model" name="model"></select>
-            </label>
-          </div>
-
-          <label id="customModelRow" hidden>
-            Custom model name
-            <input id="customModel" name="customModel" type="text" placeholder="my-custom-model" />
-          </label>
-
-          <label>
-            API key
-            <input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="Paste your provider key" />
-          </label>
-
-          <label id="baseUrlRow" hidden>
-            Base URL
-            <input id="baseUrl" name="baseUrl" type="url" placeholder="https://api.openai.com/v1" />
-          </label>
-        </section>
-
-        <section class="section">
-          <div class="section-heading">
-            <h2>Reply style</h2>
-            <p>These defaults apply to every draft.</p>
-          </div>
-
-          <div class="grid">
-            <label>
-              Default tone
-              <select id="tone" name="tone">
-                <option value="friendly">Friendly</option>
-                <option value="professional">Professional</option>
-                <option value="witty">Witty</option>
-                <option value="supportive">Supportive</option>
-                <option value="contrarian">Contrarian</option>
-                <option value="concise">Short and punchy</option>
-                <option value="thought-leader">Thought leadership</option>
-                <option value="question">Ask a smart question</option>
-              </select>
+            <label class="field">
+              <span class="field-label">API key</span>
+              <input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="Paste your provider key" />
             </label>
 
-            <label>
-              Reply length
-              <select id="replyLength" name="replyLength">
-                <option value="short">Short</option>
-                <option value="medium">Medium</option>
-              </select>
+            <label class="field" id="baseUrlRow" hidden>
+              <span class="field-label">Base URL</span>
+              <input id="baseUrl" name="baseUrl" type="url" placeholder="https://api.openai.com/v1" />
             </label>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <div class="card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                  <path d="M4 7h16M4 12h10M4 17h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <div>
+                <h2>Reply style</h2>
+                <p>Defaults applied to every draft.</p>
+              </div>
+            </div>
+
+            <div class="grid">
+              <label class="field">
+                <span class="field-label">Default tone</span>
+                <div class="select-wrap">
+                  <select id="tone" name="tone">
+                    <option value="friendly">Friendly</option>
+                    <option value="professional">Professional</option>
+                    <option value="witty">Witty</option>
+                    <option value="supportive">Supportive</option>
+                    <option value="contrarian">Contrarian</option>
+                    <option value="concise">Short and punchy</option>
+                    <option value="thought-leader">Thought leadership</option>
+                    <option value="question">Ask a smart question</option>
+                  </select>
+                </div>
+              </label>
+
+              <label class="field">
+                <span class="field-label">Reply length</span>
+                <div class="select-wrap">
+                  <select id="replyLength" name="replyLength">
+                    <option value="short">Short</option>
+                    <option value="medium">Medium</option>
+                  </select>
+                </div>
+              </label>
+            </div>
+
+            <div class="switch-row">
+              <span class="switch-text">
+                <span class="switch-title">Allow emoji</span>
+                <span class="switch-desc">Adds a single emoji only when it feels natural</span>
+              </span>
+              <span class="switch">
+                <input id="includeEmoji" name="includeEmoji" type="checkbox" />
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+              </span>
+            </div>
+
+            <label class="field">
+              <span class="field-label">Personal writing style</span>
+              <textarea
+                id="personalStyle"
+                name="personalStyle"
+                rows="5"
+                placeholder="Example: Direct, lightly warm, no hype, no hashtags. Talk like a founder who ships."
+              ></textarea>
+            </label>
+          </section>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Save settings</button>
+            <span id="save-status" class="save-status" role="status"></span>
+          </div>
+        </form>
+
+        <aside class="summary">
+          <div class="summary-card">
+            <div class="summary-title">Current setup</div>
+            <dl class="summary-list">
+              <div class="summary-item">
+                <dt>Provider</dt>
+                <dd id="summaryProvider">—</dd>
+              </div>
+              <div class="summary-item">
+                <dt>Model</dt>
+                <dd id="summaryModel">—</dd>
+              </div>
+              <div class="summary-item">
+                <dt>Tone</dt>
+                <dd id="summaryTone">—</dd>
+              </div>
+              <div class="summary-item">
+                <dt>API key</dt>
+                <dd id="summaryKey">Not set</dd>
+              </div>
+            </dl>
           </div>
 
-          <label class="checkbox">
-            <input id="includeEmoji" name="includeEmoji" type="checkbox" />
-            Allow one emoji when it feels natural
-          </label>
-
-          <label>
-            Personal writing style
-            <textarea
-              id="personalStyle"
-              name="personalStyle"
-              rows="5"
-              placeholder="Example: Direct, lightly warm, no hype, no hashtags. Talk like a founder who ships."
-            ></textarea>
-          </label>
-        </section>
-
-        <div class="form-actions">
-          <button type="submit">Save settings</button>
-          <span id="save-status" role="status"></span>
-        </div>
-      </form>
+          <div class="summary-card summary-note">
+            <div class="summary-title">Good to know</div>
+            <ul>
+              <li>Keys never leave your browser in this build.</li>
+              <li>Drafts are generated on demand, one post at a time.</li>
+              <li>For a paid public release, move calls behind a backend.</li>
+            </ul>
+          </div>
+        </aside>
+      </div>
     </main>
   </body>
 </html>

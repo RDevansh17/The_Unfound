@@ -16,6 +16,18 @@ const replyLength = document.querySelector<HTMLSelectElement>("#replyLength");
 const includeEmoji = document.querySelector<HTMLInputElement>("#includeEmoji");
 const personalStyle = document.querySelector<HTMLTextAreaElement>("#personalStyle");
 const saveStatus = document.querySelector<HTMLElement>("#save-status");
+const summaryProvider = document.querySelector<HTMLElement>("#summaryProvider");
+const summaryModel = document.querySelector<HTMLElement>("#summaryModel");
+const summaryTone = document.querySelector<HTMLElement>("#summaryTone");
+const summaryKey = document.querySelector<HTMLElement>("#summaryKey");
+
+const PROVIDER_LABELS: Record<AiProvider, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  gemini: "Google Gemini",
+  groq: "Groq",
+  "openai-compatible": "Custom API"
+};
 
 void hydrate();
 
@@ -27,14 +39,20 @@ provider?.addEventListener("change", () => {
     baseUrl.value = defaults.baseUrl;
   }
   updateVisibility();
+  updateSummary();
 });
 
 model?.addEventListener("change", () => {
   updateVisibility();
+  updateSummary();
   if (model.value === "custom" && customModel) {
     customModel.focus();
   }
 });
+
+customModel?.addEventListener("input", updateSummary);
+tone?.addEventListener("change", updateSummary);
+apiKey?.addEventListener("input", updateSummary);
 
 form?.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -58,6 +76,7 @@ form?.addEventListener("submit", async (event) => {
   };
 
   await saveSettings(settings);
+  updateSummary();
   flashStatus("Saved.");
 });
 
@@ -77,6 +96,36 @@ async function hydrate(): Promise<void> {
   includeEmoji.checked = settings.includeEmoji;
   personalStyle.value = settings.personalStyle;
   updateVisibility();
+  updateSummary();
+}
+
+function currentModelValue(): string {
+  if (!model) {
+    return "—";
+  }
+  if (model.value === "custom") {
+    return customModel?.value.trim() || "Custom model";
+  }
+  const selectedOption = model.options[model.selectedIndex];
+  return selectedOption?.textContent?.trim() || model.value;
+}
+
+function updateSummary(): void {
+  if (summaryProvider && provider) {
+    summaryProvider.textContent = PROVIDER_LABELS[provider.value as AiProvider] || provider.value;
+  }
+  if (summaryModel) {
+    summaryModel.textContent = currentModelValue();
+  }
+  if (summaryTone && tone) {
+    const toneOption = tone.options[tone.selectedIndex];
+    summaryTone.textContent = toneOption?.textContent?.trim() || tone.value;
+  }
+  if (summaryKey) {
+    const hasKey = Boolean(apiKey?.value.trim());
+    summaryKey.textContent = hasKey ? "Configured" : "Not set";
+    summaryKey.dataset.state = hasKey ? "set" : "unset";
+  }
 }
 
 function populateModelOptions(nextProvider: AiProvider, selectedModel: string): void {
