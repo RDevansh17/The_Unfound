@@ -22,8 +22,15 @@ export interface AssistantSettings {
 }
 
 export interface ReplyGenerationRequest {
-  postText: string;
-  authorName?: string;
+  targetText: string;
+  targetAuthor?: string;
+  targetHandle?: string;
+  isTargetMine: boolean;
+  rootText?: string;
+  rootAuthor?: string;
+  rootHandle?: string;
+  isRootMine: boolean;
+  isReply: boolean;
   sourceUrl: string;
 }
 

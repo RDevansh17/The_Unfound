@@ -103,6 +103,65 @@ async function generateReplies(
   }
 }
 
+function handleOrName(handle?: string, name?: string, fallback = "them"): string {
+  if (handle) {
+    return `@${handle.replace(/^@/, "")}`;
+  }
+  if (name) {
+    return name;
+  }
+  return fallback;
+}
+
+function describeSituation(request: ReplyGenerationRequest): { situation: string; guidance: string } {
+  const target = handleOrName(request.targetHandle, request.targetAuthor, "the author");
+  const root = handleOrName(request.rootHandle, request.rootAuthor, "the original poster");
+
+  if (!request.isReply) {
+    if (request.isTargetMine) {
+      return {
+        situation: "You are adding a follow-up to your OWN post.",
+        guidance: "Extend your original point with a fresh, valuable addition — do not just restate it."
+      };
+    }
+    return {
+      situation: `You are replying directly to ${target}'s post.`,
+      guidance: "React to their specific point and add something genuinely useful."
+    };
+  }
+
+  if (request.isRootMine && !request.isTargetMine) {
+    return {
+      situation: `${target} replied to YOUR post. You are the original author responding to their comment.`,
+      guidance:
+        "Respond as the host of the thread: acknowledge their point directly, add insight or answer their question, and keep it warm — even if they disagree or criticize."
+    };
+  }
+
+  if (request.isTargetMine) {
+    return {
+      situation: "You are continuing your OWN thread (replying under your earlier comment).",
+      guidance: "Add the next useful point so the thread keeps building."
+    };
+  }
+
+  if (!request.isRootMine) {
+    return {
+      situation: `You are joining a conversation under ${root}'s post by replying to ${target}'s comment.`,
+      guidance: `Engage with ${target}'s specific comment and add value to the discussion — do not simply echo the original post.`
+    };
+  }
+
+  return {
+    situation: `You are replying to ${target}.`,
+    guidance: "Add a specific, valuable reply."
+  };
+}
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 function buildUserPrompt(settings: AssistantSettings, request: ReplyGenerationRequest): string {
   const length =
     settings.replyLength === "short"
@@ -115,28 +174,48 @@ function buildUserPrompt(settings: AssistantSettings, request: ReplyGenerationRe
     ? `Personal writing style to match closely:\n${settings.personalStyle.trim()}`
     : "Write like a thoughtful founder/operator on X: clear, grounded, lightly conversational.";
 
-  const author = request.authorName ? `@${request.authorName.replace(/^@/, "")}` : "the author";
+  const { situation, guidance } = describeSituation(request);
+  const targetLabel = request.isReply ? "the comment you are replying to" : "the post you are replying to";
+  const target = handleOrName(request.targetHandle, request.targetAuthor, "the author");
 
-  return [
-    `Write 3 distinct reply options to ${author}'s post/reply.`,
+  const lines = [
+    "CONTEXT",
+    situation,
+    guidance,
     "",
-    "Make the 3 options meaningfully different:",
+    "TASK",
+    "Write 3 distinct reply options that fit the context above:",
     "1) A sharp agreement that adds one specific point",
     "2) A thoughtful pushback, nuance, or alternate angle",
-    "3) A smart question or practical takeaway",
+    "3) A smart question or a practical takeaway",
     "",
-    `Desired tone: ${describeTone(settings.tone)}`,
+    `Tone: ${describeTone(settings.tone)}`,
     length,
     emojiRule,
-    style,
+    style
+  ];
+
+  if (request.rootText && request.rootText.trim()) {
+    lines.push(
+      "",
+      `Original post by ${handleOrName(request.rootHandle, request.rootAuthor, "the original poster")}:`,
+      `"""`,
+      request.rootText.trim(),
+      `"""`
+    );
+  }
+
+  lines.push(
     "",
-    "Source post/reply text:",
+    `${capitalize(targetLabel)} (by ${target}):`,
     `"""`,
-    request.postText.trim(),
+    request.targetText.trim(),
     `"""`,
     "",
-    "Remember: reference something concrete from the text. Do not invent facts."
-  ].join("\n");
+    "Reference something concrete from the text above. Do not invent facts."
+  );
+
+  return lines.join("\n");
 }
 
 function describeTone(tone: AssistantSettings["tone"]): string {

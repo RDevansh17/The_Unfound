@@ -9,10 +9,25 @@ type ReplyGenerationResult = {
 };
 
 type ReplyContext = {
-  postText: string;
-  authorName?: string;
+  targetText: string;
+  targetAuthor?: string;
+  targetHandle?: string;
+  isTargetMine: boolean;
+  rootText?: string;
+  rootAuthor?: string;
+  rootHandle?: string;
+  isRootMine: boolean;
+  isReply: boolean;
   sourceUrl: string;
 };
+
+type ArticleInfo = {
+  text: string;
+  name?: string;
+  handle?: string;
+};
+
+let cachedOwnHandle: string | null = null;
 
 const ARTICLE_SELECTOR = 'article[data-testid="tweet"]';
 const TEXTBOX_SELECTOR =
@@ -110,8 +125,8 @@ function createAssistantButton(label: string): HTMLButtonElement {
 }
 
 async function openAssistantForArticle(article: HTMLElement, anchor: HTMLElement): Promise<void> {
-  const context = getContextFromArticle(article);
-  if (!context.postText) {
+  const context = gatherReplyContext(article);
+  if (!context.targetText) {
     showPanel(anchor, {
       status: "error",
       message: "I could not read this post yet. Try opening the post detail page and click AI Reply again."
@@ -135,7 +150,7 @@ async function openAssistantForArticle(article: HTMLElement, anchor: HTMLElement
 
 async function openAssistantForComposer(textbox: HTMLElement, anchor: HTMLElement): Promise<void> {
   const article = findNearestContextArticle(textbox);
-  const context = article ? getContextFromArticle(article) : getFallbackContext();
+  const context = article ? gatherReplyContext(article) : getFallbackContext();
   await generateAndShowReplies(context, anchor, textbox);
 }
 
@@ -144,7 +159,7 @@ async function generateAndShowReplies(
   anchor: HTMLElement,
   textbox: HTMLElement
 ): Promise<void> {
-  if (!context.postText.trim()) {
+  if (!context.targetText.trim()) {
     showPanel(anchor, {
       status: "error",
       message: "I need visible post text to draft a useful reply."
@@ -163,6 +178,7 @@ async function generateAndShowReplies(
     showPanel(anchor, {
       status: "ready",
       replies: result.replies,
+      contextLabel: describeContextLabel(context),
       onSelect: (reply) => insertReply(textbox, reply)
     });
   } catch (error) {
@@ -173,26 +189,153 @@ async function generateAndShowReplies(
   }
 }
 
-function getContextFromArticle(article: HTMLElement): ReplyContext {
-  const textNodes = Array.from(article.querySelectorAll<HTMLElement>('[data-testid="tweetText"]'));
-  const postText = textNodes
+function getOwnHandle(): string | null {
+  if (cachedOwnHandle) {
+    return cachedOwnHandle;
+  }
+
+  const profileLink = document.querySelector<HTMLAnchorElement>('a[data-testid="AppTabBar_Profile_Link"]');
+  const href = profileLink?.getAttribute("href");
+  if (href && href.startsWith("/")) {
+    cachedOwnHandle = href.slice(1).split("/")[0].toLowerCase();
+    return cachedOwnHandle;
+  }
+
+  const accountSwitcher = document.querySelector<HTMLElement>('[data-testid="SideNav_AccountSwitcher_Button"]');
+  const match = accountSwitcher?.innerText.match(/@([A-Za-z0-9_]{1,15})/);
+  if (match) {
+    cachedOwnHandle = match[1].toLowerCase();
+    return cachedOwnHandle;
+  }
+
+  return null;
+}
+
+function getArticleInfo(article: HTMLElement): ArticleInfo {
+  const text = Array.from(article.querySelectorAll<HTMLElement>('[data-testid="tweetText"]'))
     .map((node) => node.innerText.trim())
     .filter(Boolean)
     .join("\n\n");
-  const authorName = article
-    .querySelector<HTMLElement>('[data-testid="User-Name"] span')
-    ?.innerText.trim();
+
+  const userName = article.querySelector<HTMLElement>('[data-testid="User-Name"]');
+  const nameText = userName?.innerText || "";
+  const handleMatch = nameText.match(/@([A-Za-z0-9_]{1,15})/);
+  const handle = handleMatch ? handleMatch[1].toLowerCase() : undefined;
+  const name = nameText.split("\n")[0]?.trim() || undefined;
+
+  return { text, name, handle };
+}
+
+function getReplyingToHandles(article: HTMLElement): string[] {
+  const text = article.innerText || "";
+  const marker = text.indexOf("Replying to");
+  if (marker === -1) {
+    return [];
+  }
+
+  const slice = text.slice(marker, marker + 160);
+  return Array.from(slice.matchAll(/@([A-Za-z0-9_]{1,15})/g)).map((match) => match[1].toLowerCase());
+}
+
+function getConversationArticles(): HTMLElement[] {
+  const column = document.querySelector<HTMLElement>('[data-testid="primaryColumn"]') || document.body;
+  return Array.from(column.querySelectorAll<HTMLElement>(ARTICLE_SELECTOR));
+}
+
+function findMatchingPageArticle(info: ArticleInfo): HTMLElement | null {
+  if (!info.text) {
+    return null;
+  }
+
+  const needle = info.text.slice(0, 40);
+  return (
+    getConversationArticles().find((article) => {
+      const candidate = getArticleInfo(article);
+      return candidate.text.slice(0, 40) === needle && candidate.handle === info.handle;
+    }) || null
+  );
+}
+
+function gatherReplyContext(targetArticle: HTMLElement): ReplyContext {
+  const own = getOwnHandle();
+  const target = getArticleInfo(targetArticle);
+
+  const onStatusPage = location.pathname.includes("/status/");
+  const conversation = getConversationArticles();
+
+  // When the target came from the compose dialog, map it back to the page article for thread context.
+  const pageArticle = conversation.includes(targetArticle)
+    ? targetArticle
+    : findMatchingPageArticle(target);
+
+  let rootInfo: ArticleInfo | undefined;
+  let isReply = false;
+
+  const targetIndex = pageArticle ? conversation.indexOf(pageArticle) : -1;
+
+  if (onStatusPage && conversation.length > 0 && targetIndex > 0) {
+    // Ancestors render above the target; the first article is the original post.
+    rootInfo = getArticleInfo(conversation[0]);
+    isReply = true;
+  } else {
+    // Timeline / dialog: a reply tweet shows a "Replying to @handle" line.
+    const replyingTo = getReplyingToHandles(pageArticle || targetArticle).filter(
+      (handle) => handle !== target.handle
+    );
+    if (replyingTo.length > 0) {
+      isReply = true;
+      rootInfo = { text: "", handle: replyingTo[0] };
+    }
+  }
+
+  const rootHandle = rootInfo?.handle;
 
   return {
-    postText,
-    authorName,
+    targetText: target.text,
+    targetAuthor: target.name,
+    targetHandle: target.handle,
+    isTargetMine: Boolean(own && target.handle && target.handle === own),
+    rootText: rootInfo?.text || undefined,
+    rootAuthor: rootInfo?.name,
+    rootHandle,
+    isRootMine: Boolean(own && rootHandle && rootHandle === own),
+    isReply,
     sourceUrl: location.href
   };
 }
 
+function describeContextLabel(context: ReplyContext): string {
+  const target = context.targetHandle ? `@${context.targetHandle}` : "a post";
+  const root = context.rootHandle ? `@${context.rootHandle}` : "the original poster";
+
+  if (!context.isReply) {
+    return context.isTargetMine ? "Adding to your own post" : `Replying to ${target}'s post`;
+  }
+
+  if (context.isRootMine && !context.isTargetMine) {
+    return `Replying to ${target}'s comment on your post`;
+  }
+
+  if (context.isTargetMine) {
+    return "Continuing your own thread";
+  }
+
+  return `Replying to ${target}'s comment under ${root}`;
+}
+
 function getFallbackContext(): ReplyContext {
   const article = getVisibleArticles().at(-1);
-  return article ? getContextFromArticle(article) : { postText: document.title, sourceUrl: location.href };
+  if (article) {
+    return gatherReplyContext(article);
+  }
+
+  return {
+    targetText: document.title,
+    isTargetMine: false,
+    isRootMine: false,
+    isReply: false,
+    sourceUrl: location.href
+  };
 }
 
 function findNearestContextArticle(textbox: HTMLElement): HTMLElement | null {
@@ -480,7 +623,7 @@ function showPanel(
   state:
     | { status: "loading"; message: string }
     | { status: "error"; message: string }
-    | { status: "ready"; replies: string[]; onSelect: (reply: string) => void }
+    | { status: "ready"; replies: string[]; contextLabel?: string; onSelect: (reply: string) => void }
 ): void {
   closePanel(false);
   panelAnchor = anchor;
@@ -522,7 +665,7 @@ function showPanel(
   body.className = "xra-panel-body";
 
   if (state.status === "ready") {
-    renderReadyState(body, subtitle, state.replies, state.onSelect);
+    renderReadyState(body, subtitle, state.replies, state.onSelect, state.contextLabel);
   } else if (state.status === "loading") {
     const loading = document.createElement("div");
     loading.className = "xra-loading-block";
@@ -638,7 +781,8 @@ function renderReadyState(
   body: HTMLElement,
   subtitle: HTMLElement,
   replies: string[],
-  onInsert: (reply: string) => void
+  onInsert: (reply: string) => void,
+  contextLabel?: string
 ): void {
   const labels = ["Agree + add", "Nuance", "Question"];
 
@@ -648,6 +792,17 @@ function renderReadyState(
 
     const list = document.createElement("div");
     list.className = "xra-reply-list";
+
+    if (contextLabel) {
+      const context = document.createElement("div");
+      context.className = "xra-context-chip";
+      context.innerHTML =
+        '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.4 8.3 8 10 4.6-1.7 8-5 8-10V6l-8-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+      const label = document.createElement("span");
+      label.textContent = contextLabel;
+      context.append(label);
+      list.append(context);
+    }
 
     replies.forEach((reply, index) => {
       const card = document.createElement("button");
@@ -1097,6 +1252,24 @@ function injectStyles(): void {
     .xra-reply-list {
       display: grid;
       gap: 9px;
+    }
+
+    .xra-context-chip {
+      align-items: center;
+      background: rgba(29, 155, 240, 0.1);
+      border: 1px solid rgba(29, 155, 240, 0.22);
+      border-radius: 10px;
+      color: #7dd3fc;
+      display: flex;
+      font-size: 12px;
+      font-weight: 700;
+      gap: 7px;
+      margin-bottom: 3px;
+      padding: 8px 11px;
+    }
+
+    .xra-context-chip svg {
+      flex-shrink: 0;
     }
 
     .xra-reply-choice {
