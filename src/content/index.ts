@@ -53,6 +53,7 @@ let repositionHandler: (() => void) | null = null;
 let isInsertingReply = false;
 let sentWatchCleanup: (() => void) | null = null;
 let watchedComposer: HTMLElement | null = null;
+let regenOutsideHandler: ((event: MouseEvent) => void) | null = null;
 
 injectStyles();
 scheduleScan();
@@ -742,6 +743,15 @@ function showPanel(
   window.addEventListener("resize", repositionHandler);
   window.addEventListener("scroll", repositionHandler, true);
 
+  regenOutsideHandler = (event: MouseEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (target && (target.closest(".xra-regen") || target.closest(".xra-regen-menu"))) {
+      return;
+    }
+    closeAllRegenMenus();
+  };
+  document.addEventListener("click", regenOutsideHandler, true);
+
   startSentWatcher();
 }
 
@@ -1144,6 +1154,10 @@ function handlePanelEscape(event: KeyboardEvent): void {
 
 function closePanel(animate = true): void {
   window.removeEventListener("keydown", handlePanelEscape, true);
+  if (regenOutsideHandler) {
+    document.removeEventListener("click", regenOutsideHandler, true);
+    regenOutsideHandler = null;
+  }
   stopSentWatcher();
   if (repositionHandler) {
     window.removeEventListener("resize", repositionHandler);
