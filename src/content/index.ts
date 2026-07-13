@@ -512,7 +512,7 @@ function showPanel(
   subtitle.className = "xra-panel-subtitle";
   subtitle.textContent =
     state.status === "ready"
-      ? "Click a draft to insert it. Your X Reply button stays free."
+      ? "Pick a draft, edit it here, then insert or copy."
       : "Crafting replies that feel human.";
   titleWrap.append(title, subtitle);
   header.append(mark, titleWrap);
@@ -522,46 +522,7 @@ function showPanel(
   body.className = "xra-panel-body";
 
   if (state.status === "ready") {
-    const list = document.createElement("div");
-    list.className = "xra-reply-list";
-    const labels = ["Agree + add", "Nuance", "Question"];
-
-    state.replies.forEach((reply, index) => {
-      const replyButton = document.createElement("button");
-      replyButton.type = "button";
-      replyButton.className = "xra-reply-choice";
-
-      const topRow = document.createElement("div");
-      topRow.className = "xra-reply-top";
-
-      const label = document.createElement("span");
-      label.className = "xra-reply-label";
-      label.textContent = labels[index] || `Option ${index + 1}`;
-
-      const action = document.createElement("span");
-      action.className = "xra-reply-action";
-      action.textContent = "Insert";
-
-      topRow.append(label, action);
-
-      const bodyText = document.createElement("span");
-      bodyText.className = "xra-reply-body";
-      bodyText.textContent = reply;
-
-      replyButton.append(topRow, bodyText);
-      replyButton.addEventListener(
-        "click",
-        (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          state.onSelect(reply);
-        },
-        { once: true }
-      );
-      list.append(replyButton);
-    });
-
-    body.append(list);
+    renderReadyState(body, subtitle, state.replies, state.onSelect);
   } else if (state.status === "loading") {
     const loading = document.createElement("div");
     loading.className = "xra-loading-block";
@@ -598,6 +559,157 @@ function showPanel(
   repositionHandler = () => positionPanel(panel);
   window.addEventListener("resize", repositionHandler);
   window.addEventListener("scroll", repositionHandler, true);
+}
+
+function renderReadyState(
+  body: HTMLElement,
+  subtitle: HTMLElement,
+  replies: string[],
+  onInsert: (reply: string) => void
+): void {
+  const labels = ["Agree + add", "Nuance", "Question"];
+
+  const showList = (): void => {
+    body.innerHTML = "";
+    subtitle.textContent = "Pick a draft, edit it here, then insert or copy.";
+
+    const list = document.createElement("div");
+    list.className = "xra-reply-list";
+
+    replies.forEach((reply, index) => {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "xra-reply-choice";
+
+      const topRow = document.createElement("div");
+      topRow.className = "xra-reply-top";
+
+      const label = document.createElement("span");
+      label.className = "xra-reply-label";
+      label.textContent = labels[index] || `Option ${index + 1}`;
+
+      const action = document.createElement("span");
+      action.className = "xra-reply-action";
+      action.textContent = "Edit / Insert";
+
+      topRow.append(label, action);
+
+      const bodyText = document.createElement("span");
+      bodyText.className = "xra-reply-body";
+      bodyText.textContent = reply;
+
+      card.append(topRow, bodyText);
+      card.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        showEditor(reply, labels[index] || `Option ${index + 1}`);
+      });
+      list.append(card);
+    });
+
+    body.append(list);
+  };
+
+  const showEditor = (reply: string, label: string): void => {
+    body.innerHTML = "";
+    subtitle.textContent = "Edit freely here, then Insert into X or Copy.";
+
+    const editorWrap = document.createElement("div");
+    editorWrap.className = "xra-editor-wrap";
+
+    const editorLabel = document.createElement("div");
+    editorLabel.className = "xra-editor-label";
+    editorLabel.textContent = label;
+
+    const textarea = document.createElement("textarea");
+    textarea.className = "xra-editor-textarea";
+    textarea.value = reply;
+    textarea.spellcheck = true;
+    textarea.rows = 6;
+
+    const counter = document.createElement("div");
+    counter.className = "xra-editor-counter";
+    const updateCounter = (): void => {
+      const length = textarea.value.length;
+      counter.textContent = `${length} / 280`;
+      counter.classList.toggle("xra-editor-counter--over", length > 280);
+    };
+    updateCounter();
+    textarea.addEventListener("input", updateCounter);
+
+    const actions = document.createElement("div");
+    actions.className = "xra-editor-actions";
+
+    const backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "xra-btn xra-btn-ghost";
+    backBtn.textContent = "Back";
+    backBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      showList();
+    });
+
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "xra-btn xra-btn-secondary";
+    copyBtn.textContent = "Copy";
+    copyBtn.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const ok = await copyToClipboard(textarea.value);
+      copyBtn.textContent = ok ? "Copied" : "Copy failed";
+      window.setTimeout(() => {
+        copyBtn.textContent = "Copy";
+      }, 1400);
+    });
+
+    const insertBtn = document.createElement("button");
+    insertBtn.type = "button";
+    insertBtn.className = "xra-btn xra-btn-primary";
+    insertBtn.textContent = "Insert into X";
+    insertBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onInsert(textarea.value.trim());
+    });
+
+    actions.append(backBtn, copyBtn, insertBtn);
+
+    const hint = document.createElement("p");
+    hint.className = "xra-editor-hint";
+    hint.textContent = "If X won't let you edit after inserting, use Copy and paste with Cmd/Ctrl + V.";
+
+    editorWrap.append(editorLabel, textarea, counter, actions, hint);
+    body.append(editorWrap);
+
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  };
+
+  showList();
+}
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const helper = document.createElement("textarea");
+      helper.value = text;
+      helper.style.position = "fixed";
+      helper.style.opacity = "0";
+      document.body.append(helper);
+      helper.focus();
+      helper.select();
+      const ok = document.execCommand("copy");
+      helper.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
 }
 
 function handlePanelEscape(event: KeyboardEvent): void {
@@ -944,6 +1056,99 @@ function injectStyles(): void {
 
     .xra-reply-body {
       font: 500 14px/1.45 "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    .xra-editor-wrap {
+      display: grid;
+      gap: 10px;
+    }
+
+    .xra-editor-label {
+      color: #7dd3fc;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .xra-editor-textarea {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 14px;
+      color: #f7f9f9;
+      font: 500 14px/1.5 "Avenir Next", "Segoe UI", sans-serif;
+      min-height: 132px;
+      padding: 12px 14px;
+      resize: vertical;
+      width: 100%;
+    }
+
+    .xra-editor-textarea:focus {
+      border-color: rgba(29, 155, 240, 0.7);
+      box-shadow: 0 0 0 3px rgba(29, 155, 240, 0.2);
+      outline: 0;
+    }
+
+    .xra-editor-counter {
+      color: #8b98a5;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: right;
+    }
+
+    .xra-editor-counter--over {
+      color: #ffb4b4;
+    }
+
+    .xra-editor-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .xra-btn {
+      border: 0;
+      border-radius: 999px;
+      cursor: pointer;
+      font: 700 13px/1 "Avenir Next", "Segoe UI", sans-serif;
+      padding: 10px 16px;
+      transition: filter 120ms ease, background 120ms ease;
+    }
+
+    .xra-btn-primary {
+      background: #1d9bf0;
+      color: #fff;
+    }
+
+    .xra-btn-primary:hover {
+      background: #1a8cd8;
+    }
+
+    .xra-btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #f7f9f9;
+    }
+
+    .xra-btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .xra-btn-ghost {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      color: #cfd9de;
+      margin-right: auto;
+    }
+
+    .xra-btn-ghost:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .xra-editor-hint {
+      color: #8b98a5;
+      font-size: 11px;
+      line-height: 1.45;
+      margin: 2px 0 0;
     }
 
     .xra-panel-success {
