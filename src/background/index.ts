@@ -272,7 +272,7 @@ function normalizeReplies(content: unknown): ReplyGenerationResult {
   const parsed = JSON.parse(extractJsonObject(content)) as Partial<ReplyGenerationResult>;
   const replies = Array.isArray(parsed.replies)
     ? parsed.replies
-        .map((reply) => String(reply).trim().replace(/^["']|["']$/g, ""))
+        .map((reply) => dedupeRepeatedText(String(reply).trim().replace(/^["']|["']$/g, "")))
         .filter(Boolean)
     : [];
 
@@ -281,6 +281,28 @@ function normalizeReplies(content: unknown): ReplyGenerationResult {
   }
 
   return { replies: replies.slice(0, 3) };
+}
+
+function dedupeRepeatedText(value: string): string {
+  if (value.length < 16) {
+    return value;
+  }
+
+  if (value.length % 2 === 0) {
+    const mid = value.length / 2;
+    if (value.slice(0, mid) === value.slice(mid)) {
+      return value.slice(0, mid).trim();
+    }
+  }
+
+  for (let len = Math.floor(value.length / 2); len >= 16; len -= 1) {
+    const first = value.slice(0, len);
+    if (value.slice(len).startsWith(first)) {
+      return first.trim();
+    }
+  }
+
+  return value;
 }
 
 function extractJsonObject(content: string): string {

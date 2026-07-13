@@ -24,6 +24,7 @@ let scanTimer: number | undefined;
 let lastTargetTextbox: HTMLElement | null = null;
 let panelAnchor: HTMLElement | null = null;
 let repositionHandler: (() => void) | null = null;
+let isInsertingReply = false;
 
 injectStyles();
 scheduleScan();
@@ -357,6 +358,10 @@ function findComposerButtonHost(textbox: HTMLElement): HTMLElement | null {
 }
 
 function insertReply(textbox: HTMLElement, reply: string): void {
+  if (isInsertingReply) {
+    return;
+  }
+
   const target =
     findReplyTextbox() ||
     (document.contains(textbox) && !isPrimaryComposeBox(textbox) ? textbox : null) ||
@@ -370,33 +375,71 @@ function insertReply(textbox: HTMLElement, reply: string): void {
     return;
   }
 
-  setComposerText(target, reply);
-  lastTargetTextbox = target;
-  closePanelAfterDelay();
-}
-
-function setComposerText(target: HTMLElement, reply: string): void {
-  target.focus();
-
-  // One replace path only. Combining insertText + paste causes duplicated text in X's Draft.js editor.
-  const selected = document.execCommand("selectAll", false);
-  const inserted = document.execCommand("insertText", false, reply);
-
-  if (!selected || !inserted) {
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(target);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    document.execCommand("delete", false);
-    pasteIntoComposer(target, reply);
+  isInsertingReply = true;
+  try {
+    setComposerText(target, reply);
+    lastTargetTextbox = target;
+    closePanelAfterDelay();
+  } finally {
+    window.setTimeout(() => {
+      isInsertingReply = false;
+    }, 400);
   }
 }
 
-function pasteIntoComposer(target: HTMLElement, reply: string): void {
-  const dataTransfer = new DataTransfer();
-  dataTransfer.setData("text/plain", reply);
+function normalizeReplyText(text: string): string {
+  const value = text.replace(/\u00a0/g, " ").trim();
+  if (value.length < 16) {
+    return value;
+  }
 
+  // Exact doubled payload: "abcabc"
+  if (value.length % 2 === 0) {
+    const mid = value.length / 2;
+    if (value.slice(0, mid) === value.slice(mid)) {
+      return value.slice(0, mid).trim();
+    }
+  }
+
+  // Immediate repeat: "Sentence.Sentence."
+  for (let len = Math.floor(value.length / 2); len >= 16; len -= 1) {
+    const first = value.slice(0, len);
+    if (value.slice(len).startsWith(first)) {
+      return first.trim();
+    }
+  }
+
+  return value;
+}
+
+function getComposerPlainText(target: HTMLElement): string {
+  return normalizeReplyText(target.innerText || target.textContent || "");
+}
+
+function selectAllComposerContent(target: HTMLElement): void {
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+function setComposerText(target: HTMLElement, reply: string): void {
+  const clean = normalizeReplyText(reply);
+  target.focus();
+
+  // If the editor already has the correct single reply, do nothing.
+  if (getComposerPlainText(target) === clean) {
+    return;
+  }
+
+  // Clear once.
+  selectAllComposerContent(target);
+  document.execCommand("delete", false);
+
+  // Insert once via paste only. X's Draft.js often duplicates execCommand("insertText").
+  const dataTransfer = new DataTransfer();
+  dataTransfer.setData("text/plain", clean);
   target.dispatchEvent(
     new ClipboardEvent("paste", {
       bubbles: true,
@@ -404,6 +447,23 @@ function pasteIntoComposer(target: HTMLElement, reply: string): void {
       clipboardData: dataTransfer
     })
   );
+
+  // If the editor doubled it anyway, rewrite once more with insertText after clear.
+  window.setTimeout(() => {
+    const current = getComposerPlainText(target);
+    if (!current) {
+      selectAllComposerContent(target);
+      document.execCommand("insertText", false, clean);
+      return;
+    }
+
+    const fixed = normalizeReplyText(current);
+    if (fixed !== current && fixed === clean) {
+      selectAllComposerContent(target);
+      document.execCommand("delete", false);
+      document.execCommand("insertText", false, clean);
+    }
+  }, 30);
 }
 
 function showPanel(
@@ -481,7 +541,15 @@ function showPanel(
       bodyText.textContent = reply;
 
       replyButton.append(topRow, bodyText);
-      replyButton.addEventListener("click", () => state.onSelect(reply));
+      replyButton.addEventListener(
+        "click",
+        (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          state.onSelect(reply);
+        },
+        { once: true }
+      );
       list.append(replyButton);
     });
 
