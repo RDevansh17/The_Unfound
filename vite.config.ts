@@ -1,5 +1,8 @@
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+
+const root = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
   publicDir: "public",
@@ -9,10 +12,10 @@ export default defineConfig({
     target: "chrome114",
     rollupOptions: {
       input: {
-        popup: resolve(__dirname, "src/popup/index.html"),
-        options: resolve(__dirname, "src/options/index.html"),
-        background: resolve(__dirname, "src/background/index.ts"),
-        content: resolve(__dirname, "src/content/index.ts")
+        popup: resolve(root, "popup.html"),
+        options: resolve(root, "options.html"),
+        background: resolve(root, "src/background/index.ts"),
+        content: resolve(root, "src/content/index.ts")
       },
       output: {
         entryFileNames: "assets/[name].js",
