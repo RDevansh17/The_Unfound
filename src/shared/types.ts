@@ -27,6 +27,7 @@ export type ReplyVariant =
   | "question"
   | "supportive"
   | "witty"
+  | "humorous"
   | "professional";
 
 export interface ReplyGenerationRequest {

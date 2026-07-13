@@ -27,7 +27,14 @@ type ArticleInfo = {
   handle?: string;
 };
 
-type RegenVariant = "agree" | "contrarian" | "question" | "supportive" | "witty" | "professional";
+type RegenVariant =
+  | "agree"
+  | "contrarian"
+  | "question"
+  | "supportive"
+  | "witty"
+  | "humorous"
+  | "professional";
 
 const REGEN_OPTIONS: { value: RegenVariant; label: string }[] = [
   { value: "agree", label: "Agree" },
@@ -35,6 +42,7 @@ const REGEN_OPTIONS: { value: RegenVariant; label: string }[] = [
   { value: "question", label: "Question" },
   { value: "supportive", label: "Supportive" },
   { value: "witty", label: "Witty" },
+  { value: "humorous", label: "Humorous" },
   { value: "professional", label: "Professional" }
 ];
 

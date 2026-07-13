@@ -174,6 +174,8 @@ function describeVariant(variant: NonNullable<ReplyGenerationRequest["variant"]>
       return "Write a warm, SUPPORTIVE and encouraging reply that still adds something specific.";
     case "witty":
       return "Write a WITTY, clever reply that lands lightly and still adds value (not corny).";
+    case "humorous":
+      return "Write a HUMOROUS reply — playful, funny, and human. Keep it light, never mean or try-hard.";
     case "professional":
       return "Write a PROFESSIONAL, credible, concise reply.";
     default:
