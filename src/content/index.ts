@@ -218,55 +218,117 @@ function getVisibleArticles(): HTMLElement[] {
 }
 
 async function openReplyComposer(article: HTMLElement): Promise<HTMLElement | null> {
-  const existing = getActiveTextbox();
   const replyButton =
     article.querySelector<HTMLElement>('[data-testid="reply"]') ||
     Array.from(
       article.querySelectorAll<HTMLElement>('button[aria-label*="Reply"], div[role="button"][aria-label*="Reply"]')
     )[0];
 
-  replyButton?.click();
+  if (!replyButton) {
+    return null;
+  }
 
-  return waitForTextbox(existing);
+  replyButton.click();
+  return waitForReplyTextbox();
 }
 
-async function waitForTextbox(previous: HTMLElement | null): Promise<HTMLElement | null> {
+async function waitForReplyTextbox(): Promise<HTMLElement | null> {
   const startedAt = Date.now();
 
-  while (Date.now() - startedAt < 5000) {
-    const textboxes = getEditableTextboxes();
-    const fresh = textboxes.find((textbox) => textbox !== previous && isElementVisible(textbox));
-    if (fresh) {
-      return fresh;
+  while (Date.now() - startedAt < 6000) {
+    const replyBox = findReplyTextbox();
+    if (replyBox) {
+      replyBox.focus();
+      lastTargetTextbox = replyBox;
+      return replyBox;
     }
 
-    const active = getActiveTextbox();
-    if (active) {
-      return active;
-    }
-
-    await sleep(150);
+    await sleep(120);
   }
 
   return null;
 }
 
+function findReplyTextbox(): HTMLElement | null {
+  const dialog =
+    document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]') ||
+    document.querySelector<HTMLElement>('[role="dialog"]');
+
+  if (dialog) {
+    const dialogBox = Array.from(dialog.querySelectorAll<HTMLElement>(TEXTBOX_SELECTOR)).find(
+      (textbox) => isElementVisible(textbox) && textbox.getAttribute("aria-disabled") !== "true"
+    );
+    if (dialogBox) {
+      return dialogBox;
+    }
+  }
+
+  // Fallback for inline reply composers that are labeled as replies.
+  return getEditableTextboxes().find((textbox) => isReplyComposer(textbox) && !isPrimaryComposeBox(textbox)) || null;
+}
+
+function isReplyComposer(textbox: HTMLElement): boolean {
+  if (textbox.closest('[role="dialog"]')) {
+    return true;
+  }
+
+  const label = `${textbox.getAttribute("aria-label") || ""}`.toLowerCase();
+  if (label.includes("reply")) {
+    return true;
+  }
+
+  // Inline reply composers can appear under a tweet outside a dialog.
+  return Boolean(textbox.closest(ARTICLE_SELECTOR));
+}
+
+function isPrimaryComposeBox(textbox: HTMLElement): boolean {
+  // The homepage / global "new post" composer is outside dialogs and outside tweet articles.
+  if (textbox.closest('[role="dialog"]')) {
+    return false;
+  }
+
+  if (textbox.closest(ARTICLE_SELECTOR)) {
+    return false;
+  }
+
+  const label = `${textbox.getAttribute("aria-label") || ""}`.toLowerCase();
+  if (label.includes("reply")) {
+    return false;
+  }
+
+  return true;
+}
+
 function getActiveTextbox(): HTMLElement | null {
+  const replyBox = findReplyTextbox();
+  if (replyBox) {
+    return replyBox;
+  }
+
   const active = document.activeElement;
-  if (active instanceof HTMLElement && active.matches(TEXTBOX_SELECTOR)) {
+  if (active instanceof HTMLElement && active.matches(TEXTBOX_SELECTOR) && !isPrimaryComposeBox(active)) {
     return active;
   }
 
-  return lastTargetTextbox && document.contains(lastTargetTextbox) ? lastTargetTextbox : null;
+  if (lastTargetTextbox && document.contains(lastTargetTextbox) && !isPrimaryComposeBox(lastTargetTextbox)) {
+    return lastTargetTextbox;
+  }
+
+  return null;
 }
 
 function getEditableTextboxes(): HTMLElement[] {
   return Array.from(document.querySelectorAll<HTMLElement>(TEXTBOX_SELECTOR)).filter(
-    (textbox) => textbox.getAttribute("aria-disabled") !== "true"
+    (textbox) => textbox.getAttribute("aria-disabled") !== "true" && isElementVisible(textbox)
   );
 }
 
 function findComposerButtonHost(textbox: HTMLElement): HTMLElement | null {
+  // Keep AI Draft off the homepage "new post" composer so drafts don't get mixed into posts.
+  if (isPrimaryComposeBox(textbox) && !isReplyComposer(textbox)) {
+    return null;
+  }
+
   const composerRoot =
     textbox.closest<HTMLElement>('[data-testid="tweetTextarea_0"]')?.parentElement?.parentElement?.parentElement ||
     textbox.closest<HTMLElement>("form, [role='dialog']") ||
@@ -295,32 +357,40 @@ function findComposerButtonHost(textbox: HTMLElement): HTMLElement | null {
 }
 
 function insertReply(textbox: HTMLElement, reply: string): void {
-  const target = document.contains(textbox) ? textbox : getActiveTextbox();
-  if (!target) {
+  const target =
+    findReplyTextbox() ||
+    (document.contains(textbox) && !isPrimaryComposeBox(textbox) ? textbox : null) ||
+    getActiveTextbox();
+
+  if (!target || isPrimaryComposeBox(target)) {
     showPanel(null, {
       status: "error",
-      message: "Open a reply box first, then choose a draft."
+      message: "Open the reply box for that post first, then choose a draft."
     });
     return;
   }
 
-  target.focus();
-
-  // X's composer is a Draft.js contenteditable. insertText alone updates it;
-  // dispatching a second InputEvent causes the draft to appear twice.
-  const selection = window.getSelection();
-  const range = document.createRange();
-  range.selectNodeContents(target);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
-
-  const inserted = document.execCommand("insertText", false, reply);
-  if (!inserted) {
-    pasteIntoComposer(target, reply);
-  }
-
+  setComposerText(target, reply);
   lastTargetTextbox = target;
   closePanelAfterDelay();
+}
+
+function setComposerText(target: HTMLElement, reply: string): void {
+  target.focus();
+
+  // One replace path only. Combining insertText + paste causes duplicated text in X's Draft.js editor.
+  const selected = document.execCommand("selectAll", false);
+  const inserted = document.execCommand("insertText", false, reply);
+
+  if (!selected || !inserted) {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(target);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    document.execCommand("delete", false);
+    pasteIntoComposer(target, reply);
+  }
 }
 
 function pasteIntoComposer(target: HTMLElement, reply: string): void {
