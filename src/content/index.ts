@@ -133,7 +133,7 @@ function createAssistantButton(label: string): HTMLButtonElement {
   button.className = BUTTON_CLASS;
   button.title = "Draft an AI-assisted reply";
   button.innerHTML =
-    '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12 3.5l1.6 4.1 4.4 1.4-4.4 1.4L12 14.5l-1.6-4.1L6 9l4.4-1.4L12 3.5zM18.5 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2zM6 16l.7 1.8L8.5 18.5l-1.8.7L6 21l-.7-1.8L3.5 18.5l1.8-.7L6 16z"/></svg>';
+    '<svg class="xra-btn-spark" viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M12 2.75c.27 3.53 2.72 5.98 6.25 6.25-3.53.27-5.98 2.72-6.25 6.25-.27-3.53-2.72-5.98-6.25-6.25 3.53-.27 5.98-2.72 6.25-6.25Z"/><path d="M18.5 14.5c.13 1.6 1.15 2.62 2.75 2.75-1.6.13-2.62 1.15-2.75 2.75-.13-1.6-1.15-2.62-2.75-2.75 1.6-.13 2.62-1.15 2.75-2.75Z" opacity="0.7"/></svg>';
   const text = document.createElement("span");
   text.className = "xra-btn-text";
   text.textContent = label;
@@ -1258,36 +1258,44 @@ function injectStyles(): void {
   style.textContent = `
     .${BUTTON_CLASS} {
       align-items: center;
-      background: rgba(29, 155, 240, 0.12);
-      border: 1px solid rgba(29, 155, 240, 0.4);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.16);
       border-radius: 999px;
-      color: #1d9bf0;
+      color: #e7e9ea;
       cursor: pointer;
       display: inline-flex;
       flex-shrink: 0;
-      font: 600 13px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
-      gap: 6px;
-      height: 32px;
+      font: 600 12.5px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+      gap: 5px;
+      height: 30px;
+      letter-spacing: 0.01em;
       margin: 0;
-      padding: 0 14px;
+      padding: 0 13px;
       position: relative;
-      transition: background 130ms ease, border-color 130ms ease, transform 130ms ease;
+      transition: background 140ms ease, border-color 140ms ease, transform 120ms ease;
       white-space: nowrap;
       z-index: 5;
     }
 
     .${BUTTON_CLASS}:hover {
-      background: rgba(29, 155, 240, 0.2);
-      border-color: rgba(29, 155, 240, 0.6);
+      background: rgba(255, 255, 255, 0.09);
+      border-color: rgba(255, 255, 255, 0.3);
     }
 
     .${BUTTON_CLASS}:active {
       transform: scale(0.97);
     }
 
-    .${BUTTON_CLASS} svg {
+    .xra-btn-spark {
+      color: #4fa8f5;
       flex-shrink: 0;
-      opacity: 0.95;
+    }
+
+    .${BUTTON_CLASS} .xra-btn-text {
+      background: linear-gradient(180deg, #ffffff, #c9d3de);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
 
     .xra-article-button-wrap {
