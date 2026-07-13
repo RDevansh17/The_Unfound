@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>X Reply Assistant Settings</title>
+    <script type="module" src="/src/options/main.ts"></script>
+  </head>
+  <body>
+    <main class="options-page">
+      <div class="eyebrow">X Reply Assistant</div>
+      <h1>AI reply settings</h1>
+      <p class="lede">
+        Configure your provider for private use now. For a public paid version, these calls should move behind a backend with auth, billing, and rate limits.
+      </p>
+
+      <form id="settings-form" class="card">
+        <label>
+          AI provider
+          <select id="provider" name="provider">
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="groq">Groq</option>
+            <option value="openai-compatible">OpenAI-compatible API</option>
+          </select>
+        </label>
+
+        <label>
+          API key
+          <input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="Paste your provider key" />
+        </label>
+
+        <label>
+          Model
+          <input id="model" name="model" type="text" placeholder="gpt-4o-mini" />
+        </label>
+
+        <label id="baseUrlRow">
+          Base URL
+          <input id="baseUrl" name="baseUrl" type="url" placeholder="https://api.openai.com/v1" />
+        </label>
+
+        <div class="grid">
+          <label>
+            Default tone
+            <select id="tone" name="tone">
+              <option value="friendly">Friendly</option>
+              <option value="professional">Professional</option>
+              <option value="witty">Witty</option>
+              <option value="supportive">Supportive</option>
+              <option value="contrarian">Contrarian</option>
+              <option value="concise">Short and punchy</option>
+              <option value="thought-leader">Thought leadership</option>
+              <option value="question">Ask a smart question</option>
+            </select>
+          </label>
+
+          <label>
+            Reply length
+            <select id="replyLength" name="replyLength">
+              <option value="short">Short</option>
+              <option value="medium">Medium</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="checkbox">
+          <input id="includeEmoji" name="includeEmoji" type="checkbox" />
+          Allow emoji when natural
+        </label>
+
+        <label>
+          Personal writing style
+          <textarea id="personalStyle" name="personalStyle" rows="5" placeholder="Example: Be direct, helpful, a little warm, no hype, no hashtags."></textarea>
+        </label>
+
+        <div class="form-actions">
+          <button type="submit">Save settings</button>
+          <span id="save-status" role="status"></span>
+        </div>
+      </form>
+    </main>
+  </body>
+</html>
