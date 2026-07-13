@@ -78,12 +78,13 @@ function addButtonToArticle(article: HTMLElement): void {
 }
 
 function addButtonToComposer(textbox: HTMLElement): void {
-  const container = findComposerContainer(textbox);
-  if (!container || container.querySelector(`.${BUTTON_CLASS}`)) {
+  const host = findComposerButtonHost(textbox);
+  if (!host || host.querySelector(`.${BUTTON_CLASS}`)) {
     return;
   }
 
   const button = createAssistantButton("AI Draft");
+  button.classList.add("xra-composer-button");
   button.addEventListener("click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -91,8 +92,7 @@ function addButtonToComposer(textbox: HTMLElement): void {
     await openAssistantForComposer(textbox, button);
   });
 
-  const controls = container.querySelector<HTMLElement>('[role="group"]') || container;
-  controls.append(button);
+  host.append(button);
 }
 
 function createAssistantButton(label: string): HTMLButtonElement {
@@ -262,12 +262,32 @@ function getEditableTextboxes(): HTMLElement[] {
   );
 }
 
-function findComposerContainer(textbox: HTMLElement): HTMLElement | null {
-  return (
+function findComposerButtonHost(textbox: HTMLElement): HTMLElement | null {
+  const composerRoot =
     textbox.closest<HTMLElement>('[data-testid="tweetTextarea_0"]')?.parentElement?.parentElement?.parentElement ||
-    textbox.closest<HTMLElement>('form, [role="dialog"], [data-testid="toolBar"]') ||
-    textbox.parentElement
-  );
+    textbox.closest<HTMLElement>("form, [role='dialog']") ||
+    textbox.parentElement;
+
+  if (!composerRoot) {
+    return null;
+  }
+
+  const existingHost = composerRoot.querySelector<HTMLElement>(".xra-composer-button-host");
+  if (existingHost) {
+    return existingHost;
+  }
+
+  const toolbar = composerRoot.querySelector<HTMLElement>('[data-testid="toolBar"]');
+  const host = document.createElement("div");
+  host.className = "xra-composer-button-host";
+
+  if (toolbar?.parentElement) {
+    toolbar.parentElement.insertBefore(host, toolbar);
+    return host;
+  }
+
+  composerRoot.append(host);
+  return host;
 }
 
 function insertReply(textbox: HTMLElement, reply: string): void {
@@ -281,11 +301,35 @@ function insertReply(textbox: HTMLElement, reply: string): void {
   }
 
   target.focus();
-  document.execCommand("selectAll", false);
-  document.execCommand("insertText", false, reply);
-  target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: reply }));
+
+  // X's composer is a Draft.js contenteditable. insertText alone updates it;
+  // dispatching a second InputEvent causes the draft to appear twice.
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+
+  const inserted = document.execCommand("insertText", false, reply);
+  if (!inserted) {
+    pasteIntoComposer(target, reply);
+  }
+
   lastTargetTextbox = target;
   closePanelAfterDelay();
+}
+
+function pasteIntoComposer(target: HTMLElement, reply: string): void {
+  const dataTransfer = new DataTransfer();
+  dataTransfer.setData("text/plain", reply);
+
+  target.dispatchEvent(
+    new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: dataTransfer
+    })
+  );
 }
 
 function showPanel(
@@ -399,10 +443,13 @@ function injectStyles(): void {
       color: #fff;
       cursor: pointer;
       display: inline-flex;
+      flex-shrink: 0;
       font: 700 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       margin: 0 8px;
       padding: 7px 12px;
+      position: relative;
       white-space: nowrap;
+      z-index: 5;
     }
 
     .${BUTTON_CLASS}:hover {
@@ -412,6 +459,21 @@ function injectStyles(): void {
     .xra-article-button-wrap {
       align-items: center;
       display: flex;
+      flex-shrink: 0;
+    }
+
+    .xra-composer-button-host {
+      align-items: center;
+      display: flex;
+      justify-content: flex-start;
+      margin: 0 0 8px;
+      padding: 0 12px;
+      position: relative;
+      z-index: 6;
+    }
+
+    .xra-composer-button {
+      margin: 0;
     }
 
     #${PANEL_ID} {
