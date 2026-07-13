@@ -96,7 +96,7 @@ function addButtonToArticle(article: HTMLElement): void {
     return;
   }
 
-  const button = createAssistantButton("AI Reply");
+  const button = createAssistantButton("Reply");
   button.addEventListener("click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -116,7 +116,7 @@ function addButtonToComposer(textbox: HTMLElement): void {
     return;
   }
 
-  const button = createAssistantButton("AI Draft");
+  const button = createAssistantButton("Reply");
   button.classList.add("xra-composer-button");
   button.addEventListener("click", async (event) => {
     event.preventDefault();
@@ -134,7 +134,7 @@ function createAssistantButton(label: string): HTMLButtonElement {
   button.className = BUTTON_CLASS;
   button.title = "Draft an AI-assisted reply";
   button.innerHTML =
-    '<svg class="xra-btn-spark" viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M12 2.75c.27 3.53 2.72 5.98 6.25 6.25-3.53.27-5.98 2.72-6.25 6.25-.27-3.53-2.72-5.98-6.25-6.25 3.53-.27 5.98-2.72 6.25-6.25Z"/><path d="M18.5 14.5c.13 1.6 1.15 2.62 2.75 2.75-1.6.13-2.62 1.15-2.75 2.75-.13-1.6-1.15-2.62-2.75-2.75 1.6-.13 2.62-1.15 2.75-2.75Z" opacity="0.7"/></svg>';
+    '<span class="xra-btn-badge"><svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true"><path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5v8A2.5 2.5 0 0 1 18.5 16H9l-4.2 3.6A1 1 0 0 1 3 18.8V5.5Z"/></svg></span>';
   const text = document.createElement("span");
   text.className = "xra-btn-text";
   text.textContent = label;
@@ -1273,18 +1273,18 @@ function injectStyles(): void {
     .${BUTTON_CLASS} {
       align-items: center;
       background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.16);
+      border: 1px solid rgba(255, 255, 255, 0.14);
       border-radius: 999px;
       color: #e7e9ea;
       cursor: pointer;
       display: inline-flex;
       flex-shrink: 0;
       font: 600 12.5px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
-      gap: 5px;
+      gap: 7px;
       height: 30px;
       letter-spacing: 0.01em;
       margin: 0;
-      padding: 0 13px;
+      padding: 0 12px 0 6px;
       position: relative;
       transition: background 140ms ease, border-color 140ms ease, transform 120ms ease;
       white-space: nowrap;
@@ -1292,21 +1292,29 @@ function injectStyles(): void {
     }
 
     .${BUTTON_CLASS}:hover {
-      background: rgba(255, 255, 255, 0.09);
-      border-color: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.28);
     }
 
     .${BUTTON_CLASS}:active {
       transform: scale(0.97);
     }
 
-    .xra-btn-spark {
-      color: #4fa8f5;
+    .xra-btn-badge {
+      align-items: center;
+      background: linear-gradient(150deg, #1d9bf0, #0b5f9e);
+      border-radius: 7px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+      color: #fff;
+      display: grid;
       flex-shrink: 0;
+      height: 20px;
+      justify-content: center;
+      width: 20px;
     }
 
     .${BUTTON_CLASS} .xra-btn-text {
-      background: linear-gradient(180deg, #ffffff, #c9d3de);
+      background: linear-gradient(180deg, #ffffff, #cdd6e0);
       -webkit-background-clip: text;
       background-clip: text;
       -webkit-text-fill-color: transparent;
