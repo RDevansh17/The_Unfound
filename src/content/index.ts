@@ -374,15 +374,17 @@ function insertReply(textbox: HTMLElement, reply: string): void {
   }
 
   isInsertingReply = true;
-  try {
-    setComposerText(target, reply);
-    lastTargetTextbox = target;
-    closePanelAfterDelay();
-  } finally {
-    window.setTimeout(() => {
-      isInsertingReply = false;
-    }, 400);
-  }
+  void (async () => {
+    try {
+      await setComposerText(target, reply);
+      lastTargetTextbox = target;
+      closePanelAfterDelay();
+    } finally {
+      window.setTimeout(() => {
+        isInsertingReply = false;
+      }, 500);
+    }
+  })();
 }
 
 function normalizeReplyText(text: string): string {
@@ -416,51 +418,113 @@ function getEditableRoot(target: HTMLElement): HTMLElement {
   return target.querySelector<HTMLElement>('[contenteditable="true"]') || target;
 }
 
-function isMacPlatform(): boolean {
-  return /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+function readComposerText(editable: HTMLElement): string {
+  return (editable.innerText || editable.textContent || "").replace(/\u00a0/g, " ").replace(/\n+$/g, "");
 }
 
-function sendSelectAll(editable: HTMLElement): void {
+function isExactDuplicate(text: string, expected: string): boolean {
+  const value = text.trim();
+  return value === `${expected}${expected}` || (normalizeReplyText(value) === expected && value !== expected);
+}
+
+function pasteViaClipboardEvent(editable: HTMLElement, text: string): void {
+  const dataTransfer = new DataTransfer();
+  dataTransfer.setData("text/plain", text);
   editable.dispatchEvent(
-    new KeyboardEvent("keydown", {
-      key: "a",
-      code: "KeyA",
-      keyCode: 65,
-      which: 65,
+    new ClipboardEvent("paste", {
       bubbles: true,
       cancelable: true,
-      metaKey: isMacPlatform(),
-      ctrlKey: !isMacPlatform()
+      composed: true,
+      clipboardData: dataTransfer
     })
   );
 }
 
-function placeCaretAtEnd(editable: HTMLElement): void {
-  const selection = window.getSelection();
-  if (!selection) {
-    return;
-  }
-
-  const range = document.createRange();
-  range.selectNodeContents(editable);
-  range.collapse(false);
-  selection.removeAllRanges();
-  selection.addRange(range);
+function pasteViaBeforeInput(editable: HTMLElement, text: string): void {
+  const dataTransfer = new DataTransfer();
+  dataTransfer.setData("text/plain", text);
+  editable.dispatchEvent(
+    new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      inputType: "insertFromPaste",
+      data: text,
+      dataTransfer
+    })
+  );
 }
 
-function setComposerText(target: HTMLElement, reply: string): void {
+async function clearComposer(editable: HTMLElement): Promise<void> {
+  editable.focus();
+  document.execCommand("selectAll", false);
+
+  const shouldFallbackDelete = editable.dispatchEvent(
+    new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      inputType: "deleteByCut"
+    })
+  );
+
+  if (shouldFallbackDelete) {
+    document.execCommand("delete", false);
+  }
+
+  await sleep(20);
+}
+
+async function setComposerText(target: HTMLElement, reply: string): Promise<void> {
   const clean = normalizeReplyText(reply);
   const editable = getEditableRoot(target);
 
-  // Use Draft.js-compatible editing commands only.
-  // Manual DOM selection + delete/paste can leave uneditable ghost text in X's composer.
+  // X's editor (Lexical/Draft) duplicates text if we mix insertText + paste,
+  // or if we manually move the caret with Range APIs.
+  // Strategy: clear once, insert once, verify, repair only by clear+single insert.
   editable.focus();
-  sendSelectAll(editable);
-  document.execCommand("insertText", false, clean);
+  await sleep(16);
+  await clearComposer(editable);
 
-  // Keep focus in the composer so the user can immediately edit with backspace/typing.
+  pasteViaClipboardEvent(editable, clean);
+  await sleep(50);
+
+  let current = readComposerText(editable).trim();
+
+  if (!current) {
+    await clearComposer(editable);
+    pasteViaBeforeInput(editable, clean);
+    await sleep(50);
+    current = readComposerText(editable).trim();
+  }
+
+  if (isExactDuplicate(current, clean)) {
+    await clearComposer(editable);
+    pasteViaClipboardEvent(editable, clean);
+    await sleep(50);
+    current = readComposerText(editable).trim();
+  }
+
+  if (isExactDuplicate(current, clean)) {
+    await clearComposer(editable);
+    pasteViaBeforeInput(editable, clean);
+    await sleep(50);
+    current = readComposerText(editable).trim();
+  }
+
+  if (!current) {
+    // Last resort only on empty editors. If it duplicates, immediately repair via paste.
+    document.execCommand("insertText", false, clean);
+    await sleep(40);
+    current = readComposerText(editable).trim();
+    if (isExactDuplicate(current, clean)) {
+      await clearComposer(editable);
+      pasteViaClipboardEvent(editable, clean);
+      await sleep(50);
+    }
+  }
+
   editable.focus();
-  placeCaretAtEnd(editable);
 }
 
 function showPanel(
