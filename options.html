@@ -162,8 +162,29 @@
               <textarea
                 id="personalStyle"
                 name="personalStyle"
-                rows="5"
+                rows="4"
                 placeholder="Example: Direct, lightly warm, no hype, no hashtags. Talk like a founder who ships."
+              ></textarea>
+            </label>
+
+            <label class="field">
+              <span class="field-label">Example replies (one per line)</span>
+              <textarea
+                id="exampleReplies"
+                name="exampleReplies"
+                rows="4"
+                placeholder="Paste 3-5 of your real replies so drafts match your voice.&#10;yeah this is the part nobody talks about — the boring middle&#10;how are you handling X when it breaks at scale?"
+              ></textarea>
+              <span class="field-hint">The model mimics the rhythm and word choice of these, not their content.</span>
+            </label>
+
+            <label class="field">
+              <span class="field-label">Words &amp; phrases to avoid</span>
+              <textarea
+                id="avoidWords"
+                name="avoidWords"
+                rows="2"
+                placeholder="Comma or line separated. e.g. game-changer, synergy, as someone who, unpack, dive in"
               ></textarea>
             </label>
           </section>

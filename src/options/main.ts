@@ -22,6 +22,8 @@ const replyLength = document.querySelector<HTMLSelectElement>("#replyLength");
 const replyCount = document.querySelector<HTMLSelectElement>("#replyCount");
 const includeEmoji = document.querySelector<HTMLInputElement>("#includeEmoji");
 const personalStyle = document.querySelector<HTMLTextAreaElement>("#personalStyle");
+const exampleReplies = document.querySelector<HTMLTextAreaElement>("#exampleReplies");
+const avoidWords = document.querySelector<HTMLTextAreaElement>("#avoidWords");
 const saveStatus = document.querySelector<HTMLElement>("#save-status");
 const summaryProvider = document.querySelector<HTMLElement>("#summaryProvider");
 const summaryModel = document.querySelector<HTMLElement>("#summaryModel");
@@ -73,7 +75,9 @@ form?.addEventListener("submit", async (event) => {
     !replyLength ||
     !replyCount ||
     !includeEmoji ||
-    !personalStyle
+    !personalStyle ||
+    !exampleReplies ||
+    !avoidWords
   ) {
     return;
   }
@@ -90,7 +94,9 @@ form?.addEventListener("submit", async (event) => {
     replyLength: replyLength.value as AssistantSettings["replyLength"],
     replyCount: clampReplyCount(replyCount.value),
     includeEmoji: includeEmoji.checked,
-    personalStyle: personalStyle.value.trim()
+    personalStyle: personalStyle.value.trim(),
+    exampleReplies: exampleReplies.value.trim(),
+    avoidWords: avoidWords.value.trim()
   };
 
   await saveSettings(settings);
@@ -110,7 +116,9 @@ async function hydrate(): Promise<void> {
     !replyLength ||
     !replyCount ||
     !includeEmoji ||
-    !personalStyle
+    !personalStyle ||
+    !exampleReplies ||
+    !avoidWords
   ) {
     return;
   }
@@ -124,6 +132,8 @@ async function hydrate(): Promise<void> {
   replyCount.value = String(clampReplyCount(settings.replyCount));
   includeEmoji.checked = settings.includeEmoji;
   personalStyle.value = settings.personalStyle;
+  exampleReplies.value = settings.exampleReplies;
+  avoidWords.value = settings.avoidWords;
   updateVisibility();
   updateSummary();
 }

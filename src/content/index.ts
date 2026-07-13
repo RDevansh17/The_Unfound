@@ -222,6 +222,13 @@ async function generateAndShowReplies(
           payload: { ...context, variant, count: 1 }
         });
         return regen.replies[0]?.text || "";
+      },
+      regenerateAll: async () => {
+        const regen = await sendRuntimeMessage<ReplyGenerationResult>({
+          type: "GENERATE_REPLIES",
+          payload: context
+        });
+        return regen.replies;
       }
     });
   } catch (error) {
@@ -713,6 +720,7 @@ function showPanel(
         contextLabel?: string;
         onSelect: (reply: string) => void;
         regenerate?: (variant: RegenVariant) => Promise<string>;
+        regenerateAll?: () => Promise<ReplyDraft[]>;
       }
 ): void {
   closePanel(false);
@@ -760,7 +768,16 @@ function showPanel(
   });
 
   if (state.status === "ready") {
-    renderReadyState(panel, body, subtitle, state.drafts, state.onSelect, state.contextLabel, state.regenerate);
+    renderReadyState(
+      panel,
+      body,
+      subtitle,
+      state.drafts,
+      state.onSelect,
+      state.contextLabel,
+      state.regenerate,
+      state.regenerateAll
+    );
   } else if (state.status === "loading") {
     const loading = document.createElement("div");
     loading.className = "xra-loading-block";
@@ -898,6 +915,8 @@ function confirmSendThenClose(): void {
   window.setTimeout(poll, 150);
 }
 
+const REPLY_LIMIT = 280;
+
 function renderReadyState(
   panel: HTMLElement,
   body: HTMLElement,
@@ -905,8 +924,11 @@ function renderReadyState(
   drafts: ReplyDraft[],
   onInsert: (reply: string) => void,
   contextLabel?: string,
-  regenerate?: (variant: RegenVariant) => Promise<string>
+  regenerate?: (variant: RegenVariant) => Promise<string>,
+  regenerateAll?: () => Promise<ReplyDraft[]>
 ): void {
+  let currentDrafts = drafts;
+
   const showList = (): void => {
     body.innerHTML = "";
     subtitle.textContent = "Select a draft to edit and insert.";
@@ -914,18 +936,56 @@ function renderReadyState(
     const list = document.createElement("div");
     list.className = "xra-reply-list";
 
-    if (contextLabel) {
-      const context = document.createElement("div");
-      context.className = "xra-context-chip";
-      context.innerHTML =
-        '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.4 8.3 8 10 4.6-1.7 8-5 8-10V6l-8-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
-      const label = document.createElement("span");
-      label.textContent = contextLabel;
-      context.append(label);
-      list.append(context);
+    if (contextLabel || regenerateAll) {
+      const toolbar = document.createElement("div");
+      toolbar.className = "xra-reply-toolbar";
+
+      if (contextLabel) {
+        const context = document.createElement("div");
+        context.className = "xra-context-chip";
+        context.innerHTML =
+          '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.4 8.3 8 10 4.6-1.7 8-5 8-10V6l-8-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+        const label = document.createElement("span");
+        label.textContent = contextLabel;
+        context.append(label);
+        toolbar.append(context);
+      }
+
+      if (regenerateAll) {
+        const regenAllBtn = document.createElement("button");
+        regenAllBtn.type = "button";
+        regenAllBtn.className = "xra-chip xra-regen-all";
+        regenAllBtn.innerHTML = actionIcon("regen") + "<span>Regenerate all</span>";
+        regenAllBtn.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          regenAllBtn.disabled = true;
+          subtitle.textContent = "Writing a fresh set…";
+          body.innerHTML = "";
+          const loading = document.createElement("div");
+          loading.className = "xra-loading-block";
+          loading.innerHTML =
+            '<div class="xra-spinner" aria-hidden="true"></div><p class="xra-loading">Writing a fresh set…</p>';
+          body.append(loading);
+          try {
+            const next = await regenerateAll();
+            if (next.length > 0) {
+              currentDrafts = next;
+            }
+          } catch (error) {
+            subtitle.textContent =
+              error instanceof Error ? error.message : "Could not regenerate. Try again.";
+          } finally {
+            showList();
+          }
+        });
+        toolbar.append(regenAllBtn);
+      }
+
+      list.append(toolbar);
     }
 
-    drafts.forEach((draft, index) => {
+    currentDrafts.forEach((draft, index) => {
       let current = draft.text;
 
       const card = document.createElement("div");
@@ -957,6 +1017,10 @@ function renderReadyState(
       meta.append(labelEl);
       topRow.append(meta);
 
+      const count = document.createElement("span");
+      count.className = "xra-reply-count";
+      topRow.append(count);
+
       const bodyText = document.createElement("span");
       bodyText.className = "xra-reply-body";
       bodyText.textContent = current;
@@ -968,6 +1032,13 @@ function renderReadyState(
       } else {
         why.hidden = true;
       }
+
+      const updateCount = (): void => {
+        const length = current.length;
+        count.textContent = `${length}/${REPLY_LIMIT}`;
+        count.classList.toggle("xra-reply-count--over", length > REPLY_LIMIT);
+      };
+      updateCount();
 
       const clearRecommendation = (): void => {
         card.classList.remove("xra-reply-choice--reco");
@@ -1012,6 +1083,12 @@ function renderReadyState(
       insertBtn.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
+        if (current.length > REPLY_LIMIT) {
+          subtitle.textContent = `That draft is ${current.length - REPLY_LIMIT} characters over the limit. Edit it down first.`;
+          card.classList.add("xra-reply-choice--over");
+          window.setTimeout(() => card.classList.remove("xra-reply-choice--over"), 1200);
+          return;
+        }
         onInsert(current);
       });
 
@@ -1052,6 +1129,7 @@ function renderReadyState(
                 bodyText.textContent = next;
                 clearRecommendation();
                 labelEl.textContent = option.label;
+                updateCount();
               } else {
                 bodyText.textContent = previous;
               }
@@ -1165,7 +1243,13 @@ function renderReadyState(
     insertBtn.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      onInsert(textarea.value.trim());
+      const value = textarea.value.trim();
+      if (value.length > REPLY_LIMIT) {
+        counter.classList.add("xra-editor-counter--over");
+        textarea.focus();
+        return;
+      }
+      onInsert(value);
     });
 
     actions.append(backBtn, copyBtn, insertBtn);
@@ -1559,6 +1643,14 @@ function injectStyles(): void {
       gap: 9px;
     }
 
+    .xra-reply-toolbar {
+      align-items: center;
+      display: flex;
+      gap: 8px;
+      justify-content: space-between;
+      margin-bottom: 3px;
+    }
+
     .xra-context-chip {
       align-items: center;
       background: rgba(29, 155, 240, 0.1);
@@ -1566,11 +1658,37 @@ function injectStyles(): void {
       border-radius: 10px;
       color: #7dd3fc;
       display: flex;
+      flex: 1 1 auto;
       font-size: 12px;
       font-weight: 700;
       gap: 7px;
-      margin-bottom: 3px;
+      min-width: 0;
       padding: 8px 11px;
+    }
+
+    .xra-context-chip span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .xra-regen-all {
+      flex-shrink: 0;
+    }
+
+    .xra-reply-count {
+      color: #56616f;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+    }
+
+    .xra-reply-count--over {
+      color: #fb7185;
+    }
+
+    .xra-reply-choice--over {
+      border-color: rgba(251, 113, 133, 0.6);
     }
 
     .xra-context-chip svg {

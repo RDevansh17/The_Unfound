@@ -19,6 +19,8 @@ export interface AssistantSettings {
   replyLength: "short" | "medium";
   replyCount: number;
   personalStyle: string;
+  exampleReplies: string;
+  avoidWords: string;
   includeEmoji: boolean;
 }
 

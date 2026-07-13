@@ -400,6 +400,12 @@ p {
   letter-spacing: 0.01em;
 }
 
+.field-hint {
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
 input,
 textarea {
   background: rgba(0, 0, 0, 0.25);

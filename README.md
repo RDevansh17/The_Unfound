@@ -6,14 +6,14 @@ The first version is built for private use: you add your own AI provider API key
 
 ## What it does
 
-- Adds an **AI Reply** button to visible X posts and replies.
-- Adds an **AI Draft** button near visible reply composers.
+- Adds a **Reply** button to visible X posts and near reply composers.
 - Opens the native X reply composer when possible.
-- Reads the nearest post/reply text as context.
-- Generates three reply options.
+- Reads the nearest post/reply text (plus thread and own-vs-others context) to draft in context.
+- Generates a configurable number of distinct reply options (1–6) and marks one as recommended.
+- Lets you regenerate a single draft in a specific style, or regenerate the whole set.
 - Inserts the selected draft into the reply box for you to review and post.
 - Supports OpenAI, Anthropic, Gemini, Groq, and OpenAI-compatible APIs.
-- Lets you choose tone, length, emoji preference, and a personal writing style.
+- Lets you tune tone, length, reply count, emoji preference, personal writing style, example replies, and words to avoid.
 
 ## Local development
 

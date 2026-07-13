@@ -206,6 +206,8 @@ function buildUserPrompt(
   const visibilityNote = describeVisibility(request.visibility);
   const target = handleOrName(request.targetHandle, request.targetAuthor, "the author");
   const targetLabel = request.isReply ? "Reply you are responding to" : "Post you are replying to";
+  const examples = parseLines(settings.exampleReplies);
+  const avoid = parseAvoidWords(settings.avoidWords);
 
   const lines = [
     `You are ghostwriting an X reply for ${persona}.`,
@@ -214,14 +216,31 @@ function buildUserPrompt(
     `- Tone: ${describeTone(settings.tone)}`,
     `- Length: ${length}`,
     `- Emoji: ${emojiRule}`,
-    "- Sound like a real person, not an assistant. No philosophy, no life lessons, no corporate voice.",
+    "- Sound like a real person, not an assistant. No philosophy, no life lessons, no corporate voice."
+  ];
+
+  if (avoid.length > 0) {
+    lines.push(
+      `- Never use these words or phrases: ${avoid.join(", ")}. Avoid close variations too.`
+    );
+  }
+
+  if (examples.length > 0) {
+    lines.push(
+      "",
+      "THE PERSON'S REAL REPLIES (match this rhythm, sentence length, and word choice — not the content):"
+    );
+    examples.slice(0, 8).forEach((example) => lines.push(`- ${example}`));
+  }
+
+  lines.push(
     "",
     "CONTEXT",
     `This is a ${kind.replace(/_/g, " ")}${
       request.visibility ? ` on a ${request.visibility}-visibility post` : ""
     }.`,
     calibration
-  ];
+  );
 
   if (visibilityNote) {
     lines.push(visibilityNote);
@@ -296,7 +315,7 @@ async function callOpenAiCompatible(
   prompt: string
 ): Promise<ReplyGenerationResult> {
   const baseUrl = (settings.baseUrl || PROVIDER_DEFAULTS.openai.baseUrl).replace(/\/$/, "");
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const response = await safeFetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -320,7 +339,7 @@ async function callOpenAiCompatible(
 }
 
 async function callAnthropic(settings: AssistantSettings, prompt: string): Promise<ReplyGenerationResult> {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await safeFetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -344,7 +363,7 @@ async function callAnthropic(settings: AssistantSettings, prompt: string): Promi
 
 async function callGemini(settings: AssistantSettings, prompt: string): Promise<ReplyGenerationResult> {
   const model = settings.model;
-  const response = await fetch(
+  const response = await safeFetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
       model
     )}:generateContent?key=${encodeURIComponent(settings.apiKey)}`,
@@ -376,6 +395,14 @@ async function callGemini(settings: AssistantSettings, prompt: string): Promise<
   return normalizeReplies(content);
 }
 
+async function safeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch {
+    throw new Error("Couldn't reach the AI provider. Check your internet connection and try again.");
+  }
+}
+
 async function parseProviderResponse(response: Response): Promise<any> {
   const text = await response.text();
   let data: any;
@@ -387,15 +414,53 @@ async function parseProviderResponse(response: Response): Promise<any> {
   }
 
   if (!response.ok) {
-    const message = data.error?.message || data.message || response.statusText;
-    throw new Error(`AI provider error: ${message}`);
+    throw new Error(friendlyProviderError(response.status, data.error?.message || data.message || response.statusText));
   }
 
   return data;
 }
 
+function friendlyProviderError(status: number, rawMessage: string): string {
+  switch (status) {
+    case 401:
+    case 403:
+      return "Your API key was rejected. Open settings and check the key for the selected provider.";
+    case 404:
+      return "That model isn't available for your account. Pick a different model in settings.";
+    case 429:
+      return "The provider rate-limited or ran out of quota. Wait a moment, then try again.";
+    case 500:
+    case 502:
+    case 503:
+    case 529:
+      return "The AI provider is having issues right now. Try again in a few seconds.";
+    default:
+      return `AI provider error: ${rawMessage}`;
+  }
+}
+
+function parseLines(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function parseAvoidWords(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+}
+
 function cleanReplyText(value: unknown): string {
-  return dedupeRepeatedText(String(value ?? "").trim().replace(/^["']|["']$/g, ""));
+  let text = dedupeRepeatedText(String(value ?? "").trim());
+  // Strip wrapping quotes/backticks and stray leading labels the model sometimes adds.
+  text = text.replace(/^["'`]+|["'`]+$/g, "").trim();
+  text = text.replace(/^(?:reply|option|variant)\s*\d*\s*[:.\-]\s*/i, "").trim();
+  // Remove markdown emphasis and collapse runaway whitespace.
+  text = text.replace(/\*\*(.*?)\*\*/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n");
+  return text.trim();
 }
 
 function normalizeReplies(content: unknown): ReplyGenerationResult {

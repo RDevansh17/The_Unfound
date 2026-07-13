@@ -11,6 +11,8 @@ export const DEFAULT_SETTINGS: AssistantSettings = {
   replyLength: "short",
   replyCount: 3,
   personalStyle: "",
+  exampleReplies: "",
+  avoidWords: "",
   includeEmoji: false
 };
 
