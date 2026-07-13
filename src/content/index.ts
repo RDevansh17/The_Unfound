@@ -330,30 +330,28 @@ function findComposerButtonHost(textbox: HTMLElement): HTMLElement | null {
     return null;
   }
 
-  const composerRoot =
-    textbox.closest<HTMLElement>('[data-testid="tweetTextarea_0"]')?.parentElement?.parentElement?.parentElement ||
-    textbox.closest<HTMLElement>("form, [role='dialog']") ||
-    textbox.parentElement;
+  // Never inject controls into the contenteditable — that breaks typing/backspace.
+  const dialog = textbox.closest<HTMLElement>('[role="dialog"]');
+  const toolbar =
+    dialog?.querySelector<HTMLElement>('[data-testid="toolBar"]') ||
+    textbox
+      .closest<HTMLElement>("form, [data-testid='tweetTextarea_0']")
+      ?.parentElement?.parentElement?.parentElement?.querySelector<HTMLElement>('[data-testid="toolBar"]') ||
+    document.querySelector<HTMLElement>('[role="dialog"] [data-testid="toolBar"]');
 
-  if (!composerRoot) {
+  const mountParent = toolbar?.parentElement;
+  if (!mountParent || mountParent.isContentEditable || mountParent.closest("[contenteditable='true']")) {
     return null;
   }
 
-  const existingHost = composerRoot.querySelector<HTMLElement>(".xra-composer-button-host");
+  const existingHost = mountParent.querySelector<HTMLElement>(".xra-composer-button-host");
   if (existingHost) {
     return existingHost;
   }
 
-  const toolbar = composerRoot.querySelector<HTMLElement>('[data-testid="toolBar"]');
   const host = document.createElement("div");
   host.className = "xra-composer-button-host";
-
-  if (toolbar?.parentElement) {
-    toolbar.parentElement.insertBefore(host, toolbar);
-    return host;
-  }
-
-  composerRoot.append(host);
+  mountParent.insertBefore(host, toolbar);
   return host;
 }
 
@@ -393,7 +391,6 @@ function normalizeReplyText(text: string): string {
     return value;
   }
 
-  // Exact doubled payload: "abcabc"
   if (value.length % 2 === 0) {
     const mid = value.length / 2;
     if (value.slice(0, mid) === value.slice(mid)) {
@@ -401,7 +398,6 @@ function normalizeReplyText(text: string): string {
     }
   }
 
-  // Immediate repeat: "Sentence.Sentence."
   for (let len = Math.floor(value.length / 2); len >= 16; len -= 1) {
     const first = value.slice(0, len);
     if (value.slice(len).startsWith(first)) {
@@ -412,58 +408,59 @@ function normalizeReplyText(text: string): string {
   return value;
 }
 
-function getComposerPlainText(target: HTMLElement): string {
-  return normalizeReplyText(target.innerText || target.textContent || "");
+function getEditableRoot(target: HTMLElement): HTMLElement {
+  if (target.isContentEditable) {
+    return target;
+  }
+
+  return target.querySelector<HTMLElement>('[contenteditable="true"]') || target;
 }
 
-function selectAllComposerContent(target: HTMLElement): void {
+function isMacPlatform(): boolean {
+  return /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+}
+
+function sendSelectAll(editable: HTMLElement): void {
+  editable.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "a",
+      code: "KeyA",
+      keyCode: 65,
+      which: 65,
+      bubbles: true,
+      cancelable: true,
+      metaKey: isMacPlatform(),
+      ctrlKey: !isMacPlatform()
+    })
+  );
+}
+
+function placeCaretAtEnd(editable: HTMLElement): void {
   const selection = window.getSelection();
+  if (!selection) {
+    return;
+  }
+
   const range = document.createRange();
-  range.selectNodeContents(target);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
+  range.selectNodeContents(editable);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 function setComposerText(target: HTMLElement, reply: string): void {
   const clean = normalizeReplyText(reply);
-  target.focus();
+  const editable = getEditableRoot(target);
 
-  // If the editor already has the correct single reply, do nothing.
-  if (getComposerPlainText(target) === clean) {
-    return;
-  }
+  // Use Draft.js-compatible editing commands only.
+  // Manual DOM selection + delete/paste can leave uneditable ghost text in X's composer.
+  editable.focus();
+  sendSelectAll(editable);
+  document.execCommand("insertText", false, clean);
 
-  // Clear once.
-  selectAllComposerContent(target);
-  document.execCommand("delete", false);
-
-  // Insert once via paste only. X's Draft.js often duplicates execCommand("insertText").
-  const dataTransfer = new DataTransfer();
-  dataTransfer.setData("text/plain", clean);
-  target.dispatchEvent(
-    new ClipboardEvent("paste", {
-      bubbles: true,
-      cancelable: true,
-      clipboardData: dataTransfer
-    })
-  );
-
-  // If the editor doubled it anyway, rewrite once more with insertText after clear.
-  window.setTimeout(() => {
-    const current = getComposerPlainText(target);
-    if (!current) {
-      selectAllComposerContent(target);
-      document.execCommand("insertText", false, clean);
-      return;
-    }
-
-    const fixed = normalizeReplyText(current);
-    if (fixed !== current && fixed === clean) {
-      selectAllComposerContent(target);
-      document.execCommand("delete", false);
-      document.execCommand("insertText", false, clean);
-    }
-  }, 30);
+  // Keep focus in the composer so the user can immediately edit with backspace/typing.
+  editable.focus();
+  placeCaretAtEnd(editable);
 }
 
 function showPanel(
