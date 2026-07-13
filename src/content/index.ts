@@ -119,8 +119,13 @@ function createAssistantButton(label: string): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.className = BUTTON_CLASS;
-  button.textContent = label;
   button.title = "Draft an AI-assisted reply";
+  button.innerHTML =
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12 3.5l1.6 4.1 4.4 1.4-4.4 1.4L12 14.5l-1.6-4.1L6 9l4.4-1.4L12 3.5zM18.5 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2zM6 16l.7 1.8L8.5 18.5l-1.8.7L6 21l-.7-1.8L3.5 18.5l1.8-.7L6 16z"/></svg>';
+  const text = document.createElement("span");
+  text.className = "xra-btn-text";
+  text.textContent = label;
+  button.append(text);
   return button;
 }
 
@@ -805,8 +810,8 @@ function renderReadyState(
     }
 
     replies.forEach((reply, index) => {
-      const card = document.createElement("button");
-      card.type = "button";
+      const label = labels[index] || `Option ${index + 1}`;
+      const card = document.createElement("div");
       card.className = "xra-reply-choice";
 
       const topRow = document.createElement("div");
@@ -819,28 +824,59 @@ function renderReadyState(
       num.className = "xra-reply-num";
       num.textContent = String(index + 1).padStart(2, "0");
 
-      const label = document.createElement("span");
-      label.className = "xra-reply-label";
-      label.textContent = labels[index] || `Option ${index + 1}`;
+      const labelEl = document.createElement("span");
+      labelEl.className = "xra-reply-label";
+      labelEl.textContent = label;
 
-      meta.append(num, label);
-
-      const action = document.createElement("span");
-      action.className = "xra-reply-action";
-      action.textContent = "Edit";
-
-      topRow.append(meta, action);
+      meta.append(num, labelEl);
+      topRow.append(meta);
 
       const bodyText = document.createElement("span");
       bodyText.className = "xra-reply-body";
       bodyText.textContent = reply;
 
-      card.append(topRow, bodyText);
-      card.addEventListener("click", (event) => {
+      const actions = document.createElement("div");
+      actions.className = "xra-reply-actions";
+
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "xra-chip";
+      copyBtn.innerHTML = actionIcon("copy") + "<span>Copy</span>";
+      copyBtn.addEventListener("click", async (event) => {
         event.preventDefault();
         event.stopPropagation();
-        showEditor(reply, labels[index] || `Option ${index + 1}`);
+        const ok = await copyToClipboard(reply);
+        const textEl = copyBtn.querySelector("span");
+        if (textEl) {
+          textEl.textContent = ok ? "Copied" : "Failed";
+          window.setTimeout(() => {
+            textEl.textContent = "Copy";
+          }, 1300);
+        }
       });
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "xra-chip";
+      editBtn.innerHTML = actionIcon("edit") + "<span>Edit</span>";
+      editBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        showEditor(reply, label);
+      });
+
+      const insertBtn = document.createElement("button");
+      insertBtn.type = "button";
+      insertBtn.className = "xra-chip xra-chip-primary";
+      insertBtn.innerHTML = actionIcon("insert") + "<span>Insert</span>";
+      insertBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onInsert(reply);
+      });
+
+      actions.append(copyBtn, editBtn, insertBtn);
+      card.append(topRow, bodyText, actions);
       list.append(card);
     });
 
@@ -925,6 +961,15 @@ function renderReadyState(
   };
 
   showList();
+}
+
+function actionIcon(kind: "copy" | "edit" | "insert"): string {
+  const icons: Record<typeof kind, string> = {
+    copy: '<path d="M9 9V5.5A1.5 1.5 0 0 1 10.5 4h8A1.5 1.5 0 0 1 20 5.5v8a1.5 1.5 0 0 1-1.5 1.5H15" stroke="currentColor" stroke-width="1.6"/><rect x="4" y="9" width="11" height="11" rx="1.5" stroke="currentColor" stroke-width="1.6"/>',
+    edit: '<path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13.5 6.5l4 4" stroke="currentColor" stroke-width="1.6"/>',
+    insert: '<path d="M12 4v12m0 0 4-4m-4 4-4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>'
+  };
+  return `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true">${icons[kind]}</svg>`;
 }
 
 async function copyToClipboard(text: string): Promise<boolean> {
@@ -1071,44 +1116,56 @@ function injectStyles(): void {
   style.textContent = `
     .${BUTTON_CLASS} {
       align-items: center;
-      background: linear-gradient(135deg, #1d9bf0, #0b5f9e);
-      border: 0;
+      background: rgba(29, 155, 240, 0.12);
+      border: 1px solid rgba(29, 155, 240, 0.4);
       border-radius: 999px;
-      box-shadow: 0 6px 16px rgba(29, 155, 240, 0.3);
-      color: #fff;
+      color: #1d9bf0;
       cursor: pointer;
       display: inline-flex;
       flex-shrink: 0;
-      font: 700 12px/1.2 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+      font: 600 13px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       gap: 6px;
-      margin: 0 8px;
-      padding: 8px 14px;
+      height: 32px;
+      margin: 0;
+      padding: 0 14px;
       position: relative;
+      transition: background 130ms ease, border-color 130ms ease, transform 130ms ease;
       white-space: nowrap;
       z-index: 5;
     }
 
     .${BUTTON_CLASS}:hover {
-      box-shadow: 0 10px 22px rgba(29, 155, 240, 0.42);
+      background: rgba(29, 155, 240, 0.2);
+      border-color: rgba(29, 155, 240, 0.6);
+    }
+
+    .${BUTTON_CLASS}:active {
+      transform: scale(0.97);
+    }
+
+    .${BUTTON_CLASS} svg {
+      flex-shrink: 0;
+      opacity: 0.95;
     }
 
     .xra-article-button-wrap {
       align-items: center;
-      display: flex;
+      display: inline-flex;
       flex-shrink: 0;
+      margin-left: 4px;
     }
 
     .xra-composer-button-host {
       align-items: center;
-      display: flex;
+      display: inline-flex;
       justify-content: flex-start;
-      margin: 0 8px 0 0;
+      margin: 0 10px 0 0;
       position: relative;
       z-index: 6;
     }
 
     .xra-composer-button-host--action {
-      margin: 0 10px 0 0;
+      margin: 0 12px 0 0;
     }
 
     .xra-composer-button {
@@ -1277,9 +1334,8 @@ function injectStyles(): void {
       border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 14px;
       color: #eef3f8;
-      cursor: pointer;
       display: grid;
-      gap: 9px;
+      gap: 10px;
       padding: 14px 15px;
       position: relative;
       text-align: left;
@@ -1304,7 +1360,8 @@ function injectStyles(): void {
       border-color: rgba(255, 255, 255, 0.16);
     }
 
-    .xra-reply-choice:hover::before {
+    .xra-reply-choice:hover::before,
+    .xra-reply-choice:focus-within::before {
       opacity: 1;
     }
 
@@ -1335,26 +1392,61 @@ function injectStyles(): void {
       letter-spacing: 0.01em;
     }
 
-    .xra-reply-action {
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 999px;
-      color: #9aa7b6;
-      font-size: 11px;
-      font-weight: 700;
-      opacity: 0;
-      padding: 4px 11px;
-      transition: opacity 140ms ease, color 140ms ease, border-color 140ms ease;
-    }
-
-    .xra-reply-choice:hover .xra-reply-action {
-      border-color: rgba(29, 155, 240, 0.5);
-      color: #6aa8ff;
-      opacity: 1;
-    }
-
     .xra-reply-body {
       color: #dbe3ec;
       font: 500 14px/1.5 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+    }
+
+    .xra-reply-actions {
+      display: flex;
+      gap: 7px;
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      transform: translateY(-4px);
+      transition: opacity 150ms ease, max-height 150ms ease, transform 150ms ease;
+    }
+
+    .xra-reply-choice:hover .xra-reply-actions,
+    .xra-reply-choice:focus-within .xra-reply-actions {
+      max-height: 48px;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .xra-chip {
+      align-items: center;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 9px;
+      color: #cdd7e1;
+      cursor: pointer;
+      display: inline-flex;
+      font: 700 12px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+      gap: 6px;
+      padding: 7px 11px;
+      transition: background 130ms ease, border-color 130ms ease, color 130ms ease;
+    }
+
+    .xra-chip svg {
+      flex-shrink: 0;
+    }
+
+    .xra-chip:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+    }
+
+    .xra-chip-primary {
+      background: rgba(29, 155, 240, 0.16);
+      border-color: rgba(29, 155, 240, 0.45);
+      color: #6aa8ff;
+      margin-left: auto;
+    }
+
+    .xra-chip-primary:hover {
+      background: rgba(29, 155, 240, 0.26);
+      color: #eaf5ff;
     }
 
     .xra-editor-wrap {
