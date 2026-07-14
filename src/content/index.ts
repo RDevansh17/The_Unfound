@@ -1518,8 +1518,10 @@ function closePanel(animate = true): void {
 }
 
 function positionPanel(panel: HTMLElement): void {
-  const panelWidth = Math.min(420, window.innerWidth - 32);
-  const maxHeight = Math.min(window.innerHeight - 32, 720);
+  const pad = 16;
+  const gap = 18;
+  const panelWidth = Math.min(400, window.innerWidth - pad * 2);
+  const maxHeight = Math.min(window.innerHeight - pad * 2, 760);
   panel.style.width = `${panelWidth}px`;
   panel.style.maxHeight = `${maxHeight}px`;
 
@@ -1530,8 +1532,6 @@ function positionPanel(panel: HTMLElement): void {
     null;
 
   const dialogRect = dialog?.getBoundingClientRect();
-  const gap = 20;
-  const pad = 16;
 
   let left = window.innerWidth - panelWidth - pad;
   let top = pad;
@@ -1542,16 +1542,19 @@ function positionPanel(panel: HTMLElement): void {
 
     if (spaceRight >= panelWidth) {
       left = Math.round(dialogRect.right + gap);
-      top = clamp(Math.round(dialogRect.top), pad, window.innerHeight - maxHeight - pad);
+      top = Math.round(dialogRect.top);
     } else if (spaceLeft >= panelWidth) {
       left = Math.round(dialogRect.left - gap - panelWidth);
-      top = clamp(Math.round(dialogRect.top), pad, window.innerHeight - maxHeight - pad);
+      top = Math.round(dialogRect.top);
     } else {
-      // Not enough side room: dock top-right of the viewport so the compose controls stay free.
       left = window.innerWidth - panelWidth - pad;
       top = pad;
     }
   }
+
+  // Never let the panel spill outside the viewport in either axis.
+  left = clamp(left, pad, Math.max(pad, window.innerWidth - panelWidth - pad));
+  top = clamp(top, pad, Math.max(pad, window.innerHeight - maxHeight - pad));
 
   panel.style.top = `${top}px`;
   panel.style.left = `${left}px`;
@@ -1610,7 +1613,7 @@ function injectStyles(): void {
   style.textContent = `
     .${BUTTON_CLASS} {
       align-items: center;
-      background: rgba(255, 255, 255, 0.04);
+      background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.14);
       border-radius: 999px;
       color: #e7e9ea;
@@ -1630,8 +1633,8 @@ function injectStyles(): void {
     }
 
     .${BUTTON_CLASS}:hover {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.28);
+      background: rgba(255, 255, 255, 0.09);
+      border-color: rgba(124, 140, 255, 0.5);
     }
 
     .${BUTTON_CLASS}:active {
@@ -1640,9 +1643,9 @@ function injectStyles(): void {
 
     .xra-btn-badge {
       align-items: center;
-      background: linear-gradient(150deg, #1d9bf0, #0b5f9e);
+      background: linear-gradient(135deg, #4d8dff, #8b5cf6);
       border-radius: 7px;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32);
       color: #fff;
       display: grid;
       flex-shrink: 0;
@@ -1684,22 +1687,31 @@ function injectStyles(): void {
 
     #${PANEL_ID} {
       -webkit-font-smoothing: antialiased;
-      backdrop-filter: blur(20px);
-      background: linear-gradient(180deg, rgba(15, 20, 30, 0.98), rgba(9, 12, 19, 0.98));
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(24px) saturate(1.2);
+      background:
+        radial-gradient(120% 60% at 100% 0%, rgba(124, 92, 246, 0.16), transparent 60%),
+        radial-gradient(120% 60% at 0% 0%, rgba(77, 141, 255, 0.14), transparent 55%),
+        linear-gradient(180deg, #10151f 0%, #0a0d15 100%);
+      border: 1px solid rgba(255, 255, 255, 0.09);
       border-radius: 20px;
-      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      box-sizing: border-box;
       color: #eef3f8;
       display: flex;
       flex-direction: column;
       font-family: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      max-width: calc(100vw - 24px);
       opacity: 0;
       overflow: hidden;
       position: fixed;
-      transform: translateY(8px) scale(0.99);
-      transition: opacity 150ms ease, transform 150ms ease;
-      width: min(408px, calc(100vw - 32px));
+      transform: translateY(10px) scale(0.98);
+      transition: opacity 180ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+      width: min(400px, calc(100vw - 32px));
       z-index: 2147483647;
+    }
+
+    #${PANEL_ID} * {
+      box-sizing: border-box;
     }
 
     #${PANEL_ID}.xra-panel-visible {
@@ -1709,23 +1721,23 @@ function injectStyles(): void {
 
     .xra-panel-header {
       align-items: center;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
       display: flex;
-      gap: 11px;
-      padding: 16px 48px 15px 18px;
+      gap: 12px;
+      padding: 17px 52px 16px 18px;
     }
 
     .xra-panel-mark {
       align-items: center;
-      background: linear-gradient(150deg, #1d9bf0, #0b5f9e);
-      border-radius: 10px;
-      box-shadow: 0 6px 16px rgba(29, 155, 240, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+      background: linear-gradient(135deg, #4d8dff, #8b5cf6);
+      border-radius: 11px;
+      box-shadow: 0 8px 20px rgba(91, 108, 240, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
       color: #fff;
       display: grid;
       flex-shrink: 0;
-      height: 32px;
+      height: 34px;
       place-items: center;
-      width: 32px;
+      width: 34px;
     }
 
     .xra-panel-title {
@@ -1735,7 +1747,7 @@ function injectStyles(): void {
     }
 
     .xra-panel-subtitle {
-      color: #6b7787;
+      color: #7b8798;
       font-size: 12px;
       line-height: 1.4;
       margin-top: 2px;
@@ -1743,9 +1755,9 @@ function injectStyles(): void {
 
     .xra-panel-close {
       align-items: center;
-      background: transparent;
+      background: rgba(255, 255, 255, 0.04);
       border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 9px;
+      border-radius: 10px;
       color: #9aa7b6;
       cursor: pointer;
       display: grid;
@@ -1754,27 +1766,49 @@ function injectStyles(): void {
       line-height: 1;
       place-items: center;
       position: absolute;
-      right: 14px;
-      top: 14px;
-      transition: background 120ms ease, color 120ms ease;
+      right: 15px;
+      top: 15px;
+      transition: background 130ms ease, color 130ms ease, transform 130ms ease;
       width: 30px;
     }
 
     .xra-panel-close:hover {
-      background: rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.1);
       color: #eef3f8;
+      transform: rotate(90deg);
     }
 
     .xra-panel-body {
       flex: 1 1 auto;
-      overflow: auto;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
       padding: 14px;
     }
 
+    .xra-panel-body::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    .xra-panel-body::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      background-clip: padding-box;
+      border: 3px solid transparent;
+      border-radius: 999px;
+    }
+
+    .xra-panel-body::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+      background-clip: padding-box;
+    }
+
     .xra-panel-footer {
-      border-top: 1px solid rgba(255, 255, 255, 0.06);
-      color: #6b7787;
+      align-items: center;
+      border-top: 1px solid rgba(255, 255, 255, 0.07);
+      color: #616d80;
+      display: flex;
       font-size: 11px;
+      gap: 6px;
       letter-spacing: 0.01em;
       padding: 11px 18px 13px;
     }
@@ -1782,19 +1816,19 @@ function injectStyles(): void {
     .xra-loading-block {
       align-items: center;
       display: grid;
-      gap: 12px;
+      gap: 14px;
       justify-items: start;
-      min-height: 120px;
-      padding: 18px 8px;
+      min-height: 130px;
+      padding: 20px 8px;
     }
 
     .xra-spinner {
-      animation: xra-spin 0.8s linear infinite;
-      border: 2px solid rgba(255, 255, 255, 0.1);
+      animation: xra-spin 0.75s linear infinite;
+      border: 2.5px solid rgba(255, 255, 255, 0.1);
       border-radius: 999px;
-      border-top-color: #1d9bf0;
-      height: 22px;
-      width: 22px;
+      border-top-color: #6a97ff;
+      height: 24px;
+      width: 24px;
     }
 
     @keyframes xra-spin {
@@ -1809,16 +1843,18 @@ function injectStyles(): void {
       font-size: 14px;
       line-height: 1.5;
       margin: 0;
+      overflow-wrap: anywhere;
     }
 
     .xra-error {
-      color: #fb7185;
+      color: #fca5b4;
       padding: 12px 6px;
     }
 
     .xra-reply-list {
       display: grid;
-      gap: 9px;
+      gap: 10px;
+      min-width: 0;
     }
 
     .xra-reply-toolbar {
@@ -1826,15 +1862,16 @@ function injectStyles(): void {
       display: flex;
       gap: 8px;
       justify-content: space-between;
-      margin-bottom: 3px;
+      margin-bottom: 4px;
+      min-width: 0;
     }
 
     .xra-context-chip {
       align-items: center;
-      background: rgba(29, 155, 240, 0.1);
-      border: 1px solid rgba(29, 155, 240, 0.22);
+      background: rgba(91, 108, 240, 0.12);
+      border: 1px solid rgba(124, 140, 255, 0.28);
       border-radius: 10px;
-      color: #7dd3fc;
+      color: #b3c6ff;
       display: flex;
       flex: 1 1 auto;
       font-size: 12px;
@@ -1855,18 +1892,26 @@ function injectStyles(): void {
     }
 
     .xra-reply-count {
-      color: #56616f;
+      color: #5b6678;
+      flex-shrink: 0;
       font-size: 11px;
       font-variant-numeric: tabular-nums;
       font-weight: 700;
     }
 
     .xra-reply-count--over {
-      color: #fb7185;
+      color: #fca5b4;
     }
 
     .xra-reply-choice--over {
-      border-color: rgba(251, 113, 133, 0.6);
+      animation: xra-shake 0.3s ease;
+      border-color: rgba(251, 113, 133, 0.65) !important;
+    }
+
+    @keyframes xra-shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-4px); }
+      75% { transform: translateX(4px); }
     }
 
     .xra-context-chip svg {
@@ -1874,34 +1919,37 @@ function injectStyles(): void {
     }
 
     .xra-reply-choice {
-      background: rgba(255, 255, 255, 0.025);
+      background: rgba(255, 255, 255, 0.028);
       border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 14px;
+      border-radius: 15px;
       color: #eef3f8;
       display: grid;
-      gap: 10px;
-      padding: 14px 15px;
+      gap: 11px;
+      grid-template-columns: minmax(0, 1fr);
+      min-width: 0;
+      overflow: hidden;
+      padding: 14px 16px;
       position: relative;
       text-align: left;
-      transition: background 140ms ease, border-color 140ms ease;
+      transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
     }
 
     .xra-reply-choice::before {
-      background: #1d9bf0;
+      background: linear-gradient(180deg, #4d8dff, #8b5cf6);
       border-radius: 0 3px 3px 0;
+      bottom: 14px;
       content: "";
       left: 0;
       opacity: 0;
       position: absolute;
       top: 14px;
-      bottom: 14px;
-      transition: opacity 140ms ease;
+      transition: opacity 160ms ease;
       width: 3px;
     }
 
     .xra-reply-choice:hover {
-      background: rgba(255, 255, 255, 0.05);
-      border-color: rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.055);
+      border-color: rgba(255, 255, 255, 0.18);
     }
 
     .xra-reply-choice:hover::before,
@@ -1912,17 +1960,21 @@ function injectStyles(): void {
     .xra-reply-top {
       align-items: center;
       display: flex;
+      gap: 8px;
       justify-content: space-between;
+      min-width: 0;
     }
 
     .xra-reply-meta {
-      align-items: baseline;
+      align-items: center;
       display: flex;
       gap: 8px;
+      min-width: 0;
+      overflow: hidden;
     }
 
     .xra-reply-num {
-      color: #4a5768;
+      color: #4f5b6e;
       font-size: 11px;
       font-weight: 800;
       font-variant-numeric: tabular-nums;
@@ -1940,20 +1992,22 @@ function injectStyles(): void {
 
     .xra-reply-reco {
       align-items: center;
-      background: rgba(29, 155, 240, 0.16);
-      border: 1px solid rgba(29, 155, 240, 0.4);
+      background: linear-gradient(135deg, rgba(77, 141, 255, 0.2), rgba(139, 92, 246, 0.2));
+      border: 1px solid rgba(124, 140, 255, 0.45);
       border-radius: 999px;
-      color: #7dd3fc;
+      color: #c3d2ff;
       display: inline-flex;
-      font-size: 10.5px;
+      font-size: 10px;
       font-weight: 800;
-      letter-spacing: 0.03em;
-      padding: 3px 8px;
+      gap: 4px;
+      letter-spacing: 0.05em;
+      padding: 3px 9px;
       text-transform: uppercase;
     }
 
     .xra-reply-choice--reco {
-      border-color: rgba(29, 155, 240, 0.32);
+      background: rgba(91, 108, 240, 0.07);
+      border-color: rgba(124, 140, 255, 0.3);
     }
 
     .xra-reply-choice--reco::before {
@@ -1961,31 +2015,25 @@ function injectStyles(): void {
     }
 
     .xra-reply-why {
-      color: #7f8b9a;
+      color: #828fa0;
       font: 500 12px/1.45 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
-      font-style: italic;
+      overflow-wrap: anywhere;
     }
 
     .xra-reply-body {
-      color: #dbe3ec;
-      font: 500 14px/1.5 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+      color: #dde5ee;
+      font: 500 14.5px/1.55 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      white-space: normal;
+      word-break: break-word;
     }
 
     .xra-reply-actions {
       display: flex;
+      flex-wrap: wrap;
       gap: 7px;
-      max-height: 0;
-      opacity: 0;
-      overflow: hidden;
-      transform: translateY(-4px);
-      transition: opacity 150ms ease, max-height 150ms ease, transform 150ms ease;
-    }
-
-    .xra-reply-choice:hover .xra-reply-actions,
-    .xra-reply-choice:focus-within .xra-reply-actions {
-      max-height: 48px;
-      opacity: 1;
-      transform: translateY(0);
+      min-width: 0;
     }
 
     .xra-chip {
@@ -1998,8 +2046,8 @@ function injectStyles(): void {
       display: inline-flex;
       font: 700 12px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       gap: 6px;
-      padding: 7px 11px;
-      transition: background 130ms ease, border-color 130ms ease, color 130ms ease;
+      padding: 8px 11px;
+      transition: background 130ms ease, border-color 130ms ease, color 130ms ease, transform 130ms ease;
     }
 
     .xra-chip svg {
@@ -2009,18 +2057,20 @@ function injectStyles(): void {
     .xra-chip:hover {
       background: rgba(255, 255, 255, 0.12);
       color: #fff;
+      transform: translateY(-1px);
     }
 
     .xra-chip-primary {
-      background: rgba(29, 155, 240, 0.16);
-      border-color: rgba(29, 155, 240, 0.45);
-      color: #6aa8ff;
+      background: linear-gradient(135deg, #4d8dff, #8b5cf6);
+      border-color: transparent;
+      box-shadow: 0 6px 16px rgba(91, 108, 240, 0.35);
+      color: #fff;
       margin-left: auto;
     }
 
     .xra-chip-primary:hover {
-      background: rgba(29, 155, 240, 0.26);
-      color: #eaf5ff;
+      box-shadow: 0 8px 20px rgba(91, 108, 240, 0.5);
+      color: #fff;
     }
 
     .xra-regen {
@@ -2028,14 +2078,14 @@ function injectStyles(): void {
     }
 
     .xra-regen-menu {
-      background: #141b28;
+      background: #151b28;
       border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 12px;
-      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+      border-radius: 13px;
+      box-shadow: 0 20px 44px rgba(0, 0, 0, 0.55);
       display: grid;
       gap: 2px;
-      min-width: 150px;
-      padding: 6px;
+      min-width: 156px;
+      padding: 7px;
       position: absolute;
       z-index: 10;
     }
@@ -2047,18 +2097,18 @@ function injectStyles(): void {
     .xra-regen-item {
       background: transparent;
       border: 0;
-      border-radius: 8px;
+      border-radius: 9px;
       color: #cdd7e1;
       cursor: pointer;
       font: 600 13px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
-      padding: 9px 10px;
+      padding: 10px 11px;
       text-align: left;
       transition: background 120ms ease, color 120ms ease;
     }
 
     .xra-regen-item:hover {
-      background: rgba(29, 155, 240, 0.16);
-      color: #eaf5ff;
+      background: linear-gradient(135deg, rgba(77, 141, 255, 0.2), rgba(139, 92, 246, 0.2));
+      color: #eaf0ff;
     }
 
     .xra-reply-loading .xra-reply-body {
@@ -2072,7 +2122,8 @@ function injectStyles(): void {
 
     .xra-editor-wrap {
       display: grid;
-      gap: 10px;
+      gap: 11px;
+      min-width: 0;
     }
 
     .xra-editor-label {
@@ -2083,21 +2134,21 @@ function injectStyles(): void {
     }
 
     .xra-editor-textarea {
-      background: rgba(0, 0, 0, 0.28);
+      background: rgba(0, 0, 0, 0.3);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 13px;
       color: #eef3f8;
       font: 500 14px/1.55 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       min-height: 132px;
-      padding: 12px 14px;
+      padding: 13px 15px;
       resize: vertical;
       width: 100%;
     }
 
     .xra-editor-textarea:focus {
-      background: rgba(0, 0, 0, 0.34);
-      border-color: rgba(29, 155, 240, 0.7);
-      box-shadow: 0 0 0 3px rgba(29, 155, 240, 0.18);
+      background: rgba(0, 0, 0, 0.36);
+      border-color: rgba(124, 140, 255, 0.7);
+      box-shadow: 0 0 0 3px rgba(91, 108, 240, 0.22);
       outline: 0;
     }
 
@@ -2110,11 +2161,12 @@ function injectStyles(): void {
     }
 
     .xra-editor-counter--over {
-      color: #fb7185;
+      color: #fca5b4;
     }
 
     .xra-editor-actions {
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
       justify-content: flex-end;
     }
@@ -2125,7 +2177,7 @@ function injectStyles(): void {
       cursor: pointer;
       font: 700 13px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       padding: 11px 17px;
-      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+      transition: transform 130ms ease, background 130ms ease, box-shadow 130ms ease, border-color 130ms ease;
     }
 
     .xra-btn:active {
@@ -2133,13 +2185,14 @@ function injectStyles(): void {
     }
 
     .xra-btn-primary {
-      background: linear-gradient(135deg, #1d9bf0, #0b5f9e);
-      box-shadow: 0 10px 22px rgba(29, 155, 240, 0.28);
+      background: linear-gradient(135deg, #4d8dff, #8b5cf6);
+      box-shadow: 0 10px 24px rgba(91, 108, 240, 0.35);
       color: #fff;
     }
 
     .xra-btn-primary:hover {
-      box-shadow: 0 14px 28px rgba(29, 155, 240, 0.4);
+      box-shadow: 0 14px 30px rgba(91, 108, 240, 0.5);
+      transform: translateY(-1px);
     }
 
     .xra-btn-secondary {
@@ -2164,14 +2217,16 @@ function injectStyles(): void {
     }
 
     .xra-editor-hint {
-      color: #6b7787;
+      color: #616d80;
       font-size: 11px;
       line-height: 1.45;
       margin: 2px 0 0;
+      overflow-wrap: anywhere;
     }
 
     .xra-panel-success {
-      outline: 2px solid rgba(29, 155, 240, 0.75);
+      border-color: rgba(124, 140, 255, 0.7);
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(124, 140, 255, 0.55);
     }
   `;
   document.documentElement.append(style);
