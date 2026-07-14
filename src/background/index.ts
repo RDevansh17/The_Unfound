@@ -11,25 +11,32 @@ import {
   type RuntimeResponse
 } from "../shared/types";
 
-const SYSTEM_PROMPT = `You are ghostwriting replies on X (Twitter) for a real person.
+const SYSTEM_PROMPT = `You are ghostwriting replies on X (Twitter) for a real person. You are the best in the world at this.
 
-Everything you write must read like it was typed by a sharp, busy human — never like an AI, a brand, or a philosopher.
+Your only goal: write replies that are indistinguishable from something a sharp, real human typed in 5 seconds — and that make people want to reply back or follow.
 
-How real replies actually sound:
-- They react to ONE specific thing in the post, not the whole topic
-- Plain, spoken language, the way you'd text a smart friend
-- Short. Most good replies are one or two lines.
-- They add a concrete point, a real example, or a genuine question — they don't summarize what the person already said
+READ FIRST, THEN REACT
+- Read the whole conversation, but reply to the LAST message (the one marked as the target).
+- Latch onto ONE specific thing actually said — a word, number, claim, or detail. Never reply to the topic in general.
+- If it's a reply under someone's post, respond to that reply, not the original post (stay aware of the original for context).
+- Never invent facts, stats, or personal stories that weren't given.
 
-Never do these (they instantly read as AI):
-- Aphorisms or life-lesson energy ("At the end of the day...", "The real X is Y")
+HOW REAL REPLIES SOUND
+- Plain, spoken language, like texting a smart friend. Contractions. Lowercase is fine.
+- Short. One or two lines. Often a single sentence.
+- They add something: a concrete point, a specific example, a sharp genuine question, a quick real reaction, or a small useful pushback.
+- They sound like they have a point of view, not like a helpful assistant summarizing.
+
+INSTANT AI TELLS — NEVER DO THESE
+- Aphorisms / life lessons ("At the end of the day...", "The real X is Y", "That's the difference between...")
 - "It's not just X, it's Y" or "This isn't about X, it's about Y" constructions
-- Grand, abstract, or philosophical takes
-- Motivational-poster, LinkedIn, or corporate voice
-- Empty praise: "Great post", "So true", "This 100%", "Couldn't agree more", "Love this"
-- Engagement bait, hashtags, quotes around the reply, markdown
+- Abstract, grand, or philosophical takes; anything that sounds like a fortune cookie or LinkedIn post
+- Empty praise: "Great post", "So true", "This 100%", "Couldn't agree more", "Well said", "Love this"
+- Summarizing or paraphrasing the post back at them before adding your bit
+- Starting with "Honestly," "Absolutely," "Indeed," "Ah," or the person's @handle
+- Rhetorical "Right?" / "Am I right?" endings, hashtags, emoji-as-punctuation, quotes around the reply, markdown
 - Em dashes, unless the person's own style clearly uses them
-- Restating the post back to them
+- Two clauses balanced for effect ("Not because X, but because Y")
 
 Return ONLY valid JSON in exactly this shape:
 {"variants":[{"text":"the reply","recommended":false},{"text":"the reply","recommended":true,"rationale":"one short line on why this one fits best"}]}
@@ -188,6 +195,29 @@ function describeVariant(variant: NonNullable<ReplyGenerationRequest["variant"]>
   }
 }
 
+function renderThread(request: ReplyGenerationRequest): string[] {
+  const thread = request.thread?.filter((item) => item.text.trim() || item.handle) ?? [];
+  if (thread.length === 0) {
+    return [];
+  }
+
+  const lines = [
+    thread.length > 1
+      ? "CONVERSATION (oldest first). Reply to the LAST message; the earlier ones are context only:"
+      : "POST YOU ARE REPLYING TO:"
+  ];
+
+  thread.forEach((item, index) => {
+    const who = item.isMine ? "you" : handleOrName(item.handle, item.author, "someone");
+    const role = index === 0 && thread.length > 1 ? "original post" : index === 0 ? "post" : "reply";
+    const marker = item.isTarget ? "  <<< REPLY TO THIS ONE" : "";
+    lines.push("", `[${role} by ${who}]${marker}`);
+    lines.push(item.text.trim() ? `"""${item.text.trim()}"""` : "(text not shown — respond to it based on who they are)");
+  });
+
+  return lines;
+}
+
 function buildUserPrompt(
   settings: AssistantSettings,
   request: ReplyGenerationRequest,
@@ -246,44 +276,45 @@ function buildUserPrompt(
     lines.push(visibilityNote);
   }
 
-  if (request.rootText && request.rootText.trim()) {
-    lines.push(
-      "",
-      `Original post by ${handleOrName(request.rootHandle, request.rootAuthor, "the original poster")}:`,
-      `"""`,
-      request.rootText.trim(),
-      `"""`
-    );
+  const threadLines = renderThread(request);
+  if (threadLines.length > 0) {
+    lines.push("", ...threadLines);
+  } else {
+    // Fallback for older payloads without a structured thread.
+    if (request.rootText && request.rootText.trim()) {
+      lines.push(
+        "",
+        `Original post by ${handleOrName(request.rootHandle, request.rootAuthor, "the original poster")}:`,
+        `"""`,
+        request.rootText.trim(),
+        `"""`
+      );
+    }
+    lines.push("", `${targetLabel} (by ${target}):`, `"""`, request.targetText.trim(), `"""`);
   }
 
-  lines.push(
-    "",
-    `${targetLabel} (by ${target}):`,
-    `"""`,
-    request.targetText.trim(),
-    `"""`,
-    "",
-    "TASK"
-  );
+  lines.push("", "TASK");
 
   if (request.variant) {
     lines.push(
       `Write ${count} reply option${count > 1 ? "s" : ""} in this specific style: ${describeVariant(
         request.variant
       )}`,
-      "Make it sound human and specific to the post above. Do not mark anything recommended."
+      "It must react to something concrete in the target message and sound like a real person. Do not mark anything recommended."
     );
   } else {
     lines.push(
-      `Generate exactly ${count} distinct reply variant${count > 1 ? "s" : ""} as JSON.`,
-      "Pick genuinely different angles based on what THIS specific post calls for — do not force a fixed agree / contrarian / question structure. Some posts want agreement with a new detail, some a sharp question, some a light disagreement, some just a quick real reaction.",
+      `Write ${count} reply option${count > 1 ? "s" : ""} to the target message.`,
+      "These should feel like the SAME person could have sent any of them: same voice, same core reaction — just a different angle, opening, or detail each time. Give real choices, not opposite stances. Only diverge into disagreement or a question if the message genuinely invites it.",
+      "Vary the first few words and sentence shape across options so they never feel templated.",
+      "Each one must react to something specific in the target message. No summarizing it back.",
       count > 1
-        ? "Mark exactly one variant as recommended and give a short rationale for why it fits best."
+        ? "Mark exactly one as recommended — the one that best fits this exact moment — with a short rationale."
         : "Do not mark it recommended."
     );
   }
 
-  lines.push("", "Reference something concrete from the text above. Do not invent facts.");
+  lines.push("", "Do not invent facts, numbers, or stories that are not in the conversation above.");
 
   return lines.join("\n");
 }
@@ -323,8 +354,9 @@ async function callOpenAiCompatible(
     },
     body: JSON.stringify({
       model: settings.model,
-      temperature: 0.85,
-      presence_penalty: 0.3,
+      temperature: 0.9,
+      presence_penalty: 0.4,
+      frequency_penalty: 0.4,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },

@@ -36,6 +36,14 @@ export type ReplyVariant =
   | "humorous"
   | "professional";
 
+export interface ThreadItem {
+  author?: string;
+  handle?: string;
+  text: string;
+  isMine: boolean;
+  isTarget: boolean;
+}
+
 export interface ReplyGenerationRequest {
   targetText: string;
   targetAuthor?: string;
@@ -46,6 +54,7 @@ export interface ReplyGenerationRequest {
   rootHandle?: string;
   isRootMine: boolean;
   isReply: boolean;
+  thread?: ThreadItem[];
   visibility?: "high" | "low";
   sourceUrl: string;
   variant?: ReplyVariant;

@@ -14,6 +14,14 @@ type ReplyGenerationResult = {
   replies: ReplyDraft[];
 };
 
+type ThreadItem = {
+  author?: string;
+  handle?: string;
+  text: string;
+  isMine: boolean;
+  isTarget: boolean;
+};
+
 type ReplyContext = {
   targetText: string;
   targetAuthor?: string;
@@ -24,6 +32,7 @@ type ReplyContext = {
   rootHandle?: string;
   isRootMine: boolean;
   isReply: boolean;
+  thread?: ThreadItem[];
   visibility?: "high" | "low";
   sourceUrl: string;
 };
@@ -179,7 +188,10 @@ async function openAssistantForArticle(article: HTMLElement, anchor: HTMLElement
   }
 
   lastTargetTextbox = textbox;
-  await generateAndShowReplies(context, anchor, textbox);
+  // The reply dialog is now open and renders the full thread it will post under —
+  // re-read context from it for the most accurate original-post + reply chain.
+  const dialogContext = gatherReplyContext(article);
+  await generateAndShowReplies(dialogContext.targetText ? dialogContext : context, anchor, textbox);
 }
 
 async function openAssistantForComposer(textbox: HTMLElement, anchor: HTMLElement): Promise<void> {
@@ -306,51 +318,133 @@ function findMatchingPageArticle(info: ArticleInfo): HTMLElement | null {
   );
 }
 
-function gatherReplyContext(targetArticle: HTMLElement): ReplyContext {
-  const own = getOwnHandle();
-  const target = getArticleInfo(targetArticle);
+function isMineHandle(handle: string | undefined, own: string | null): boolean {
+  return Boolean(own && handle && handle === own);
+}
 
-  const onStatusPage = location.pathname.includes("/status/");
-  const conversation = getConversationArticles();
+function articleToThreadItem(info: ArticleInfo, own: string | null, isTarget: boolean): ThreadItem {
+  return {
+    author: info.name,
+    handle: info.handle,
+    text: info.text,
+    isMine: isMineHandle(info.handle, own),
+    isTarget
+  };
+}
 
-  // When the target came from the compose dialog, map it back to the page article for thread context.
-  const pageArticle = conversation.includes(targetArticle)
-    ? targetArticle
-    : findMatchingPageArticle(target);
+function getOpenReplyDialog(): HTMLElement | null {
+  return (
+    document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]') ||
+    document.querySelector<HTMLElement>('[role="dialog"]')
+  );
+}
 
-  let rootInfo: ArticleInfo | undefined;
-  let isReply = false;
-
-  const targetIndex = pageArticle ? conversation.indexOf(pageArticle) : -1;
-
-  if (onStatusPage && conversation.length > 0 && targetIndex > 0) {
-    // Ancestors render above the target; the first article is the original post.
-    rootInfo = getArticleInfo(conversation[0]);
-    isReply = true;
-  } else {
-    // Timeline / dialog: a reply tweet shows a "Replying to @handle" line.
-    const replyingTo = getReplyingToHandles(pageArticle || targetArticle).filter(
-      (handle) => handle !== target.handle
-    );
-    if (replyingTo.length > 0) {
-      isReply = true;
-      rootInfo = { text: "", handle: replyingTo[0] };
-    }
+// The reply dialog renders the exact tweets you are replying to, oldest first,
+// which is the most reliable source of thread context across timeline and status pages.
+function getDialogThread(own: string | null): ThreadItem[] {
+  const dialog = getOpenReplyDialog();
+  if (!dialog) {
+    return [];
   }
 
-  const rootHandle = rootInfo?.handle;
+  const infos = Array.from(dialog.querySelectorAll<HTMLElement>(ARTICLE_SELECTOR))
+    .map((article) => getArticleInfo(article))
+    .filter((info) => info.text.trim());
+
+  if (infos.length === 0) {
+    return [];
+  }
+
+  return infos.map((info, index) => articleToThreadItem(info, own, index === infos.length - 1));
+}
+
+// On a status page the conversation column shows ancestors above the focused tweet.
+function getPageThread(targetArticle: HTMLElement, own: string | null): ThreadItem[] {
+  const target = getArticleInfo(targetArticle);
+  const conversation = getConversationArticles();
+  const pageArticle = conversation.includes(targetArticle)
+    ? targetArticle
+    : findMatchingPageArticle(target) || targetArticle;
+  const targetIndex = conversation.indexOf(pageArticle);
+  const onStatusPage = location.pathname.includes("/status/");
+
+  const items: ThreadItem[] = [];
+
+  if (onStatusPage && targetIndex > 0) {
+    const original = getArticleInfo(conversation[0]);
+    if (original.text && original.handle !== target.handle) {
+      items.push(articleToThreadItem(original, own, false));
+    }
+
+    // Pull in the immediate parent when the target replied to someone other than the original poster.
+    const parents = getReplyingToHandles(pageArticle).filter(
+      (handle) => handle !== target.handle && handle !== original.handle
+    );
+    if (parents.length > 0) {
+      const parentArticle = conversation
+        .slice(1, targetIndex)
+        .reverse()
+        .find((article) => getArticleInfo(article).handle === parents[0]);
+      if (parentArticle) {
+        const parent = getArticleInfo(parentArticle);
+        if (parent.text) {
+          items.push(articleToThreadItem(parent, own, false));
+        }
+      }
+    }
+
+    items.push(articleToThreadItem(target, own, true));
+    return items;
+  }
+
+  // Timeline: we can read the target, and often the "Replying to @handle" hint (parent text hidden).
+  const replyingTo = getReplyingToHandles(pageArticle).filter((handle) => handle !== target.handle);
+  if (replyingTo.length > 0) {
+    items.push({
+      handle: replyingTo[0],
+      text: "",
+      isMine: isMineHandle(replyingTo[0], own),
+      isTarget: false
+    });
+  }
+  items.push(articleToThreadItem(target, own, true));
+  return items;
+}
+
+function collectThread(targetArticle: HTMLElement, own: string | null): ThreadItem[] {
+  const dialogThread = getDialogThread(own);
+  if (dialogThread.length > 0) {
+    return dialogThread;
+  }
+  return getPageThread(targetArticle, own);
+}
+
+function gatherReplyContext(targetArticle: HTMLElement): ReplyContext {
+  const own = getOwnHandle();
+  const thread = collectThread(targetArticle, own);
+
+  const targetItem = thread.find((item) => item.isTarget) || thread[thread.length - 1];
+  const ancestors = thread.filter((item) => item !== targetItem);
+  const rootItem = ancestors[0];
+  const isReply = ancestors.length > 0;
+
+  const target = getArticleInfo(targetArticle);
+  const pageArticleForVisibility =
+    getConversationArticles().find((article) => getArticleInfo(article).handle === targetItem.handle) ||
+    targetArticle;
 
   return {
-    targetText: target.text,
-    targetAuthor: target.name,
-    targetHandle: target.handle,
-    isTargetMine: Boolean(own && target.handle && target.handle === own),
-    rootText: rootInfo?.text || undefined,
-    rootAuthor: rootInfo?.name,
-    rootHandle,
-    isRootMine: Boolean(own && rootHandle && rootHandle === own),
+    targetText: targetItem.text || target.text,
+    targetAuthor: targetItem.author,
+    targetHandle: targetItem.handle,
+    isTargetMine: Boolean(targetItem.isMine),
+    rootText: rootItem?.text || undefined,
+    rootAuthor: rootItem?.author,
+    rootHandle: rootItem?.handle,
+    isRootMine: Boolean(rootItem?.isMine),
     isReply,
-    visibility: getArticleVisibility(pageArticle || targetArticle),
+    thread,
+    visibility: getArticleVisibility(pageArticleForVisibility),
     sourceUrl: location.href
   };
 }
