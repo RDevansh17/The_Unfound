@@ -268,7 +268,7 @@ async function generateAndShowReplies(
   } catch (error) {
     showPanel(anchor, {
       status: "error",
-      message: error instanceof Error ? error.message : "Could not generate replies."
+      message: "Couldn't generate a draft. Check your API key or try again."
     });
   }
 }
@@ -575,20 +575,21 @@ function getArticleVisibility(article: HTMLElement): "high" | "low" | undefined 
 function describeContextLabel(context: ReplyContext): string {
   const target = context.targetHandle ? `@${context.targetHandle}` : "a post";
   const root = context.rootHandle ? `@${context.rootHandle}` : "the original poster";
+  const visibility = context.visibility ? ` · ${context.visibility}` : "";
 
   if (!context.isReply) {
-    return context.isTargetMine ? "Adding to your own post" : `Replying to ${target}'s post`;
+    return (context.isTargetMine ? "Warm post" : `Replying to ${target}'s post`) + visibility;
   }
 
   if (context.isRootMine && !context.isTargetMine) {
-    return `Replying to ${target}'s comment on your post`;
+    return `Own thread reply${visibility}`;
   }
 
   if (context.isTargetMine) {
-    return "Continuing your own thread";
+    return `Own thread${visibility}`;
   }
 
-  return `Replying to ${target}'s comment under ${root}`;
+  return `Replying to ${target}'s comment under ${root}${visibility}`;
 }
 
 function getFallbackContext(): ReplyContext {
@@ -1643,10 +1644,10 @@ function injectStyles(): void {
 
     .xra-btn-badge {
       align-items: center;
-      background: linear-gradient(135deg, #4d8dff, #8b5cf6);
-      border-radius: 7px;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32);
-      color: #fff;
+      background: #16181c;
+      border: 1px solid #2f3336;
+      border-radius: 4px;
+      color: #1d9bf0;
       display: grid;
       flex-shrink: 0;
       height: 20px;
@@ -1655,10 +1656,7 @@ function injectStyles(): void {
     }
 
     .${BUTTON_CLASS} .xra-btn-text {
-      background: linear-gradient(180deg, #ffffff, #cdd6e0);
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
+      color: #e7e9ea;
     }
 
     .xra-article-button-wrap {
@@ -1687,16 +1685,11 @@ function injectStyles(): void {
 
     #${PANEL_ID} {
       -webkit-font-smoothing: antialiased;
-      backdrop-filter: blur(24px) saturate(1.2);
-      background:
-        radial-gradient(120% 60% at 100% 0%, rgba(124, 92, 246, 0.16), transparent 60%),
-        radial-gradient(120% 60% at 0% 0%, rgba(77, 141, 255, 0.14), transparent 55%),
-        linear-gradient(180deg, #10151f 0%, #0a0d15 100%);
-      border: 1px solid rgba(255, 255, 255, 0.09);
-      border-radius: 20px;
-      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      background: #16181c;
+      border: 1px solid #2f3336;
+      border-radius: 8px;
       box-sizing: border-box;
-      color: #eef3f8;
+      color: #e7e9ea;
       display: flex;
       flex-direction: column;
       font-family: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -1729,10 +1722,10 @@ function injectStyles(): void {
 
     .xra-panel-mark {
       align-items: center;
-      background: linear-gradient(135deg, #4d8dff, #8b5cf6);
-      border-radius: 11px;
-      box-shadow: 0 8px 20px rgba(91, 108, 240, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-      color: #fff;
+      background: #16181c;
+      border: 1px solid #2f3336;
+      border-radius: 4px;
+      color: #1d9bf0;
       display: grid;
       flex-shrink: 0;
       height: 34px;
@@ -1853,7 +1846,7 @@ function injectStyles(): void {
 
     .xra-reply-list {
       display: grid;
-      gap: 10px;
+      gap: 0;
       min-width: 0;
     }
 
@@ -1919,10 +1912,11 @@ function injectStyles(): void {
     }
 
     .xra-reply-choice {
-      background: rgba(255, 255, 255, 0.028);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 15px;
-      color: #eef3f8;
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid #2f3336;
+      border-radius: 0;
+      color: #e7e9ea;
       display: grid;
       gap: 11px;
       grid-template-columns: minmax(0, 1fr);
@@ -1935,8 +1929,8 @@ function injectStyles(): void {
     }
 
     .xra-reply-choice::before {
-      background: linear-gradient(180deg, #4d8dff, #8b5cf6);
-      border-radius: 0 3px 3px 0;
+      background: #1d9bf0;
+      border-radius: 0;
       bottom: 14px;
       content: "";
       left: 0;
@@ -1948,8 +1942,8 @@ function injectStyles(): void {
     }
 
     .xra-reply-choice:hover {
-      background: rgba(255, 255, 255, 0.055);
-      border-color: rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.03);
+      border-color: #2f3336;
     }
 
     .xra-reply-choice:hover::before,
@@ -1992,10 +1986,10 @@ function injectStyles(): void {
 
     .xra-reply-reco {
       align-items: center;
-      background: linear-gradient(135deg, rgba(77, 141, 255, 0.2), rgba(139, 92, 246, 0.2));
-      border: 1px solid rgba(124, 140, 255, 0.45);
-      border-radius: 999px;
-      color: #c3d2ff;
+      background: #0c2b42;
+      border: 0;
+      border-radius: 4px;
+      color: #5ca9e9;
       display: inline-flex;
       font-size: 10px;
       font-weight: 800;
@@ -2006,8 +2000,8 @@ function injectStyles(): void {
     }
 
     .xra-reply-choice--reco {
-      background: rgba(91, 108, 240, 0.07);
-      border-color: rgba(124, 140, 255, 0.3);
+      background: transparent;
+      border-left: 2px solid #1d9bf0;
     }
 
     .xra-reply-choice--reco::before {
@@ -2021,8 +2015,8 @@ function injectStyles(): void {
     }
 
     .xra-reply-body {
-      color: #dde5ee;
-      font: 500 14.5px/1.55 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+      color: #e7e9ea;
+      font: 400 14.5px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       min-width: 0;
       overflow-wrap: anywhere;
       white-space: normal;
@@ -2038,10 +2032,10 @@ function injectStyles(): void {
 
     .xra-chip {
       align-items: center;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 9px;
-      color: #cdd7e1;
+      background: transparent;
+      border: 0;
+      border-radius: 4px;
+      color: #71767b;
       cursor: pointer;
       display: inline-flex;
       font: 700 12px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
@@ -2055,22 +2049,22 @@ function injectStyles(): void {
     }
 
     .xra-chip:hover {
-      background: rgba(255, 255, 255, 0.12);
-      color: #fff;
-      transform: translateY(-1px);
+      background: transparent;
+      color: #e7e9ea;
+      transform: none;
     }
 
     .xra-chip-primary {
-      background: linear-gradient(135deg, #4d8dff, #8b5cf6);
-      border-color: transparent;
-      box-shadow: 0 6px 16px rgba(91, 108, 240, 0.35);
-      color: #fff;
+      background: #1d9bf0;
+      border: 1px solid #1d9bf0;
+      border-radius: 999px;
+      color: #000;
       margin-left: auto;
     }
 
     .xra-chip-primary:hover {
-      box-shadow: 0 8px 20px rgba(91, 108, 240, 0.5);
-      color: #fff;
+      opacity: 0.9;
+      color: #000;
     }
 
     .xra-regen {
@@ -2081,7 +2075,6 @@ function injectStyles(): void {
       background: #151b28;
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 13px;
-      box-shadow: 0 20px 44px rgba(0, 0, 0, 0.55);
       display: grid;
       gap: 2px;
       min-width: 156px;
@@ -2107,8 +2100,8 @@ function injectStyles(): void {
     }
 
     .xra-regen-item:hover {
-      background: linear-gradient(135deg, rgba(77, 141, 255, 0.2), rgba(139, 92, 246, 0.2));
-      color: #eaf0ff;
+      background: #0c2b42;
+      color: #e7e9ea;
     }
 
     .xra-reply-loading .xra-reply-body {
@@ -2147,8 +2140,8 @@ function injectStyles(): void {
 
     .xra-editor-textarea:focus {
       background: rgba(0, 0, 0, 0.36);
-      border-color: rgba(124, 140, 255, 0.7);
-      box-shadow: 0 0 0 3px rgba(91, 108, 240, 0.22);
+      border-color: #1d9bf0;
+      box-shadow: none;
       outline: 0;
     }
 
@@ -2172,27 +2165,24 @@ function injectStyles(): void {
     }
 
     .xra-btn {
-      border: 0;
+      background: transparent;
+      border: 1px solid #3e4144;
       border-radius: 999px;
       cursor: pointer;
       font: 700 13px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       padding: 11px 17px;
-      transition: transform 130ms ease, background 130ms ease, box-shadow 130ms ease, border-color 130ms ease;
-    }
-
-    .xra-btn:active {
-      transform: translateY(1px);
+      transition: opacity 130ms ease, background 130ms ease, border-color 130ms ease;
     }
 
     .xra-btn-primary {
-      background: linear-gradient(135deg, #4d8dff, #8b5cf6);
-      box-shadow: 0 10px 24px rgba(91, 108, 240, 0.35);
-      color: #fff;
+      background: #1d9bf0;
+      border-color: #1d9bf0;
+      color: #000;
     }
 
     .xra-btn-primary:hover {
-      box-shadow: 0 14px 30px rgba(91, 108, 240, 0.5);
-      transform: translateY(-1px);
+      opacity: 0.9;
+      transform: none;
     }
 
     .xra-btn-secondary {
@@ -2225,8 +2215,7 @@ function injectStyles(): void {
     }
 
     .xra-panel-success {
-      border-color: rgba(124, 140, 255, 0.7);
-      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(124, 140, 255, 0.55);
+      border-color: #1d9bf0;
     }
   `;
   document.documentElement.append(style);
