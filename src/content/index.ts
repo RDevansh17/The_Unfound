@@ -188,10 +188,32 @@ async function openAssistantForArticle(article: HTMLElement, anchor: HTMLElement
   }
 
   lastTargetTextbox = textbox;
-  // The reply dialog is now open and renders the full thread it will post under —
-  // re-read context from it for the most accurate original-post + reply chain.
+  // The reply dialog is now open. Re-read context (dialog target + recovered
+  // original post) and keep whichever version carries the richest thread.
   const dialogContext = gatherReplyContext(article);
-  await generateAndShowReplies(dialogContext.targetText ? dialogContext : context, anchor, textbox);
+  await generateAndShowReplies(pickRicherContext(context, dialogContext), anchor, textbox);
+}
+
+function contextRichness(context: ReplyContext): number {
+  let score = 0;
+  if (context.targetText.trim()) {
+    score += 1;
+  }
+  if (context.rootText && context.rootText.trim()) {
+    score += 2;
+  }
+  score += context.thread?.filter((item) => item.text.trim()).length ?? 0;
+  return score;
+}
+
+function pickRicherContext(a: ReplyContext, b: ReplyContext): ReplyContext {
+  if (!b.targetText.trim()) {
+    return a;
+  }
+  if (!a.targetText.trim()) {
+    return b;
+  }
+  return contextRichness(b) >= contextRichness(a) ? b : a;
 }
 
 async function openAssistantForComposer(textbox: HTMLElement, anchor: HTMLElement): Promise<void> {
@@ -411,12 +433,74 @@ function getPageThread(targetArticle: HTMLElement, own: string | null): ThreadIt
   return items;
 }
 
+// Read the "Replying to @handle" hint from the open dialog and/or the target article.
+function getParentHandle(targetArticle: HTMLElement, targetHandle?: string): string | undefined {
+  const handles: string[] = [];
+  const dialog = getOpenReplyDialog();
+  if (dialog) {
+    handles.push(...getReplyingToHandles(dialog));
+  }
+  handles.push(...getReplyingToHandles(targetArticle));
+  return handles.find((handle) => handle && handle !== targetHandle);
+}
+
+// Find a post's text anywhere in the rendered conversation by its author handle.
+function findPostTextByHandle(handle: string, excludeText?: string): ArticleInfo | undefined {
+  const matches = getConversationArticles()
+    .map((article) => getArticleInfo(article))
+    .filter((info) => info.handle === handle && info.text.trim() && info.text !== excludeText);
+
+  if (matches.length === 0) {
+    return undefined;
+  }
+
+  // Prefer an original post (one that is not itself a "Replying to" reply) when we can tell.
+  return matches[0];
+}
+
+function threadHasRootText(thread: ThreadItem[]): boolean {
+  return thread.some((item) => !item.isTarget && item.text.trim());
+}
+
 function collectThread(targetArticle: HTMLElement, own: string | null): ThreadItem[] {
   const dialogThread = getDialogThread(own);
-  if (dialogThread.length > 0) {
-    return dialogThread;
+  const pageThread = getPageThread(targetArticle, own);
+
+  // Prefer whichever source already carries the original post text.
+  let base: ThreadItem[];
+  if (threadHasRootText(dialogThread)) {
+    base = dialogThread;
+  } else if (threadHasRootText(pageThread)) {
+    base = pageThread;
+  } else {
+    base = dialogThread.length > 0 ? dialogThread : pageThread;
   }
-  return getPageThread(targetArticle, own);
+
+  if (base.length === 0) {
+    return base;
+  }
+
+  // If we still don't have the original post text (common when replying to a reply
+  // straight from the timeline), try to recover it from the "Replying to" handle.
+  if (!threadHasRootText(base)) {
+    const targetItem = base.find((item) => item.isTarget) || base[base.length - 1];
+    const parentHandle = getParentHandle(targetArticle, targetItem?.handle);
+
+    if (parentHandle && parentHandle !== targetItem?.handle) {
+      const original = findPostTextByHandle(parentHandle, targetItem?.text);
+      const rootItem: ThreadItem = {
+        handle: parentHandle,
+        author: original?.name,
+        text: original?.text || "",
+        isMine: isMineHandle(parentHandle, own),
+        isTarget: false
+      };
+      // Replace any empty placeholder ancestor, then prepend the recovered root.
+      base = [rootItem, ...base.filter((item) => item.isTarget || item.text.trim())];
+    }
+  }
+
+  return base;
 }
 
 function gatherReplyContext(targetArticle: HTMLElement): ReplyContext {
