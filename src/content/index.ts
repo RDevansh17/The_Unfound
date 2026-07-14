@@ -1685,9 +1685,9 @@ function injectStyles(): void {
 
     #${PANEL_ID} {
       -webkit-font-smoothing: antialiased;
-      background: #16181c;
-      border: 1px solid #2f3336;
-      border-radius: 8px;
+      background: #101418;
+      border: 1px solid #30363d;
+      border-radius: 14px;
       box-sizing: border-box;
       color: #e7e9ea;
       display: flex;
@@ -1699,7 +1699,7 @@ function injectStyles(): void {
       position: fixed;
       transform: translateY(10px) scale(0.98);
       transition: opacity 180ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
-      width: min(400px, calc(100vw - 32px));
+      width: min(420px, calc(100vw - 32px));
       z-index: 2147483647;
     }
 
@@ -1714,17 +1714,17 @@ function injectStyles(): void {
 
     .xra-panel-header {
       align-items: center;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      border-bottom: 1px solid #2f3336;
       display: flex;
       gap: 12px;
-      padding: 17px 52px 16px 18px;
+      padding: 16px 52px 15px 18px;
     }
 
     .xra-panel-mark {
       align-items: center;
       background: #16181c;
-      border: 1px solid #2f3336;
-      border-radius: 4px;
+      border: 1px solid #3e4144;
+      border-radius: 8px;
       color: #1d9bf0;
       display: grid;
       flex-shrink: 0;
@@ -1750,7 +1750,7 @@ function injectStyles(): void {
       align-items: center;
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 10px;
+      border-radius: 8px;
       color: #9aa7b6;
       cursor: pointer;
       display: grid;
@@ -1776,7 +1776,7 @@ function injectStyles(): void {
       overflow-x: hidden;
       overflow-y: auto;
       overscroll-behavior: contain;
-      padding: 14px;
+      padding: 14px 16px 12px;
     }
 
     .xra-panel-body::-webkit-scrollbar {
@@ -1803,7 +1803,7 @@ function injectStyles(): void {
       font-size: 11px;
       gap: 6px;
       letter-spacing: 0.01em;
-      padding: 11px 18px 13px;
+      padding: 11px 18px 12px;
     }
 
     .xra-loading-block {
@@ -1846,7 +1846,7 @@ function injectStyles(): void {
 
     .xra-reply-list {
       display: grid;
-      gap: 0;
+      gap: 10px;
       min-width: 0;
     }
 
@@ -1912,17 +1912,16 @@ function injectStyles(): void {
     }
 
     .xra-reply-choice {
-      background: transparent;
-      border: 0;
-      border-bottom: 1px solid #2f3336;
-      border-radius: 0;
+      background: #16181c;
+      border: 1px solid #2f3336;
+      border-radius: 10px;
       color: #e7e9ea;
       display: grid;
       gap: 11px;
       grid-template-columns: minmax(0, 1fr);
       min-width: 0;
       overflow: hidden;
-      padding: 14px 16px;
+      padding: 14px 15px 13px;
       position: relative;
       text-align: left;
       transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
@@ -1930,20 +1929,20 @@ function injectStyles(): void {
 
     .xra-reply-choice::before {
       background: #1d9bf0;
-      border-radius: 0;
-      bottom: 14px;
+      border-radius: 10px 0 0 10px;
+      bottom: 12px;
       content: "";
       left: 0;
       opacity: 0;
       position: absolute;
-      top: 14px;
+      top: 12px;
       transition: opacity 160ms ease;
       width: 3px;
     }
 
     .xra-reply-choice:hover {
-      background: rgba(255, 255, 255, 0.03);
-      border-color: #2f3336;
+      background: #191e23;
+      border-color: #3e4144;
     }
 
     .xra-reply-choice:hover::before,
@@ -2000,7 +1999,7 @@ function injectStyles(): void {
     }
 
     .xra-reply-choice--reco {
-      background: transparent;
+      background: #141b21;
       border-left: 2px solid #1d9bf0;
     }
 
@@ -2027,7 +2026,21 @@ function injectStyles(): void {
       display: flex;
       flex-wrap: wrap;
       gap: 7px;
+      max-height: 0;
       min-width: 0;
+      opacity: 0;
+      overflow: hidden;
+      padding-top: 0;
+      transform: translateY(-4px);
+      transition: opacity 140ms ease, max-height 140ms ease, padding 140ms ease, transform 140ms ease;
+    }
+
+    .xra-reply-choice:hover .xra-reply-actions,
+    .xra-reply-choice:focus-within .xra-reply-actions {
+      max-height: 44px;
+      opacity: 1;
+      padding-top: 2px;
+      transform: translateY(0);
     }
 
     .xra-chip {
@@ -2040,7 +2053,7 @@ function injectStyles(): void {
       display: inline-flex;
       font: 700 12px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       gap: 6px;
-      padding: 8px 11px;
+      padding: 6px 7px;
       transition: background 130ms ease, border-color 130ms ease, color 130ms ease, transform 130ms ease;
     }
 
@@ -2060,6 +2073,7 @@ function injectStyles(): void {
       border-radius: 999px;
       color: #000;
       margin-left: auto;
+      padding: 7px 13px;
     }
 
     .xra-chip-primary:hover {
