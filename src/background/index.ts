@@ -11,40 +11,41 @@ import {
   type RuntimeResponse
 } from "../shared/types";
 
-const SYSTEM_PROMPT = `You are ghostwriting replies on X (Twitter) for a real person. You are the best in the world at this.
+const SYSTEM_PROMPT = `You ghostwrite X (Twitter) replies for a real person. Every reply must sound like they read the post, got it, and typed a quick human reaction.
 
-Your only goal: write replies that are indistinguishable from something a sharp, real human typed in 5 seconds — and that make people want to reply back or follow.
+WORKFLOW — follow in order:
+1. Read the full conversation. Reply to the message marked as the target; use earlier messages only for context.
+2. State internally what the target message actually means in plain English (not the topic category — the specific point).
+3. Pick one concrete anchor from the target text: a word, number, claim, or detail you will react to.
+4. Write replies that engage that meaning. Never drift to a different topic.
 
-READ FIRST, THEN REACT
-- Read the whole conversation, but reply to the LAST message (the one marked as the target).
-- Latch onto ONE specific thing actually said — a word, number, claim, or detail. Never reply to the topic in general.
-- If it's a reply under someone's post, respond to that reply, not the original post (stay aware of the original for context).
-- Never invent facts, stats, or personal stories that weren't given.
+HOW GOOD REPLIES SOUND
+- Plain spoken language. Contractions OK. Lowercase OK.
+- Short: one or two lines, often one sentence.
+- They ADD something: a specific agreement with a new detail, a practical implication, a small nuance, a quick real reaction, or light pushback on one part.
+- They have a point of view. They do not summarize, coach, or philosophize.
 
-HOW REAL REPLIES SOUND
-- Plain, spoken language, like texting a smart friend. Contractions. Lowercase is fine.
-- Short. One or two lines. Often a single sentence.
-- They add something: a concrete point, a specific example, a sharp genuine question, a quick real reaction, or a small useful pushback.
-- They sound like they have a point of view, not like a helpful assistant summarizing.
+DEFAULT BATCH (unless the user prompt asks for a specific style like "question"):
+- Write STATEMENTS, not questions. No question marks. No "curious what...", "what made you...", "is there a story...", "how do you...", "did you...".
+- All options must address the SAME understanding of the target — same meaning, same anchor — with different angles (e.g. agree+add, practical takeaway, small nuance). Not opposite unrelated takes.
+- Every option must be impossible to write without having read this specific post.
 
-INSTANT AI TELLS — NEVER DO THESE
-- Aphorisms / life lessons ("At the end of the day...", "The real X is Y", "That's the difference between...")
-- "It's not just X, it's Y" or "This isn't about X, it's about Y" constructions
-- Abstract, grand, or philosophical takes; anything that sounds like a fortune cookie or LinkedIn post
-- Empty praise: "Great post", "So true", "This 100%", "Couldn't agree more", "Well said", "Love this"
-- Summarizing or paraphrasing the post back at them before adding your bit
-- Starting with "Honestly," "Absolutely," "Indeed," "Ah," or the person's @handle
-- Rhetorical "Right?" / "Am I right?" endings, hashtags, emoji-as-punctuation, quotes around the reply, markdown
-- Em dashes, unless the person's own style clearly uses them
-- Two clauses balanced for effect ("Not because X, but because Y")
+NEVER
+- Generic curiosity or interview-style questions when not explicitly requested
+- Aphorisms, life lessons, LinkedIn voice, motivational tone
+- "It's not X, it's Y" / "This isn't about X, it's about Y"
+- Empty praise: "Great post", "So true", "Love this", "Well said"
+- Restating the post back at them, inventing facts, or replying to a topic not in the text
+- Starting with "Honestly," "Absolutely," "Indeed," "Ah,"
+- Hashtags, markdown, quotes around the reply
 
-Return ONLY valid JSON in exactly this shape:
-{"variants":[{"text":"the reply","recommended":false},{"text":"the reply","recommended":true,"rationale":"one short line on why this one fits best"}]}
+Return ONLY valid JSON:
+{"understanding":"one plain sentence: what the target message means","anchor":"the exact word/phrase/detail you reacted to","variants":[{"text":"reply","recommended":false},{"text":"reply","recommended":true,"rationale":"under 15 words"}]}
 
-Rules for the JSON:
-- Mark at most one variant "recommended", and only when more than one variant is requested.
-- "rationale" belongs only on the recommended variant and stays under 15 words.
-- "text" is the raw reply only: no quotes, no labels, no numbering.`;
+JSON rules:
+- "understanding" and "anchor" are required — they keep replies grounded.
+- Mark at most one variant "recommended" when multiple variants are requested.
+- "text" is the raw reply only.`;
 
 chrome.runtime.onMessage.addListener(
   (request: RuntimeRequest, _sender, sendResponse: (response: RuntimeResponse) => void) => {
@@ -97,12 +98,13 @@ async function generateReplies(
   const count = resolveReplyCount(settings, request);
   const prompt = buildUserPrompt(settings, request, count);
   const model = settings.model || PROVIDER_DEFAULTS[settings.provider].model;
+  const parseOptions = { allowQuestions: request.variant === "question" };
 
   switch (settings.provider) {
     case "anthropic":
-      return callAnthropic({ ...settings, model }, prompt);
+      return callAnthropic({ ...settings, model }, prompt, request.variant, parseOptions);
     case "gemini":
-      return callGemini({ ...settings, model }, prompt);
+      return callGemini({ ...settings, model }, prompt, request.variant, parseOptions);
     case "groq":
       return callOpenAiCompatible(
         {
@@ -110,10 +112,12 @@ async function generateReplies(
           baseUrl: "https://api.groq.com/openai/v1",
           model
         },
-        prompt
+        prompt,
+        request.variant,
+        parseOptions
       );
     case "openai-compatible":
-      return callOpenAiCompatible({ ...settings, model }, prompt);
+      return callOpenAiCompatible({ ...settings, model }, prompt, request.variant, parseOptions);
     case "openai":
     default:
       return callOpenAiCompatible(
@@ -122,7 +126,9 @@ async function generateReplies(
           baseUrl: "https://api.openai.com/v1",
           model
         },
-        prompt
+        prompt,
+        request.variant,
+        parseOptions
       );
   }
 }
@@ -145,7 +151,14 @@ function classifyContext(request: ReplyGenerationRequest): { kind: ContextKind; 
   if (request.isReply && request.isRootMine && !request.isTargetMine) {
     return {
       kind: "own_thread_reply",
-      calibration: `${target} replied under YOUR post. You are the host of this thread — answer their point directly, add something useful, and stay warm even if they push back. Never sound defensive or salesy.`
+      calibration: `${target} commented on YOUR post. Respond to what they actually said in their comment — acknowledge their specific point, answer it if they asked something, add value. You are the thread host: direct, warm, never defensive.`
+    };
+  }
+
+  if (request.isReply && !request.isRootMine) {
+    return {
+      kind: "stranger_post",
+      calibration: `You are replying to ${target}'s comment in someone else's thread. Respond to their comment's specific point. The original post is background only — do not reply as if the original post was the target.`
     };
   }
 
@@ -153,14 +166,13 @@ function classifyContext(request: ReplyGenerationRequest): { kind: ContextKind; 
     return {
       kind: "warm_post",
       calibration:
-        "This is your own post or thread. Extend your original thought with a genuinely new point — never restate what you already said."
+        "This is your own post or thread. Add a genuinely new point that extends what you already said — never repeat yourself."
     };
   }
 
   return {
     kind: "stranger_post",
-    calibration:
-      "You do not know this person. Skip flattery and over-familiarity. Just react like a real reader who found it interesting or worth pushing back on."
+    calibration: `You are replying to ${target}'s post. Read what they actually claimed or shared, not the general topic. React to their specific point like a real reader who understood it.`
   };
 }
 
@@ -177,19 +189,19 @@ function describeVisibility(visibility: ReplyGenerationRequest["visibility"]): s
 function describeVariant(variant: NonNullable<ReplyGenerationRequest["variant"]>): string {
   switch (variant) {
     case "agree":
-      return "Write a reply that clearly AGREES and adds one specific supporting point or example.";
+      return "Write a reply that clearly agrees with their specific point and adds one concrete supporting detail or example from your own experience — not generic praise.";
     case "contrarian":
-      return "Write a respectful CONTRARIAN reply that challenges the idea (never the person) with a concrete reason.";
+      return "Write a respectful reply that pushes back on ONE specific part of what they said, with a concrete reason — never attack the person.";
     case "question":
-      return "Write a reply that is a single SHARP, genuinely curious QUESTION.";
+      return "Write a reply that is a single sharp, genuinely curious QUESTION about something specific they said.";
     case "supportive":
-      return "Write a warm, SUPPORTIVE and encouraging reply that still adds something specific.";
+      return "Write a warm, encouraging reply that references something specific they said and adds a small useful point.";
     case "witty":
-      return "Write a WITTY, clever reply that lands lightly and still adds value (not corny).";
+      return "Write a witty, clever reply that still engages their specific point — light, not corny.";
     case "humorous":
-      return "Write a HUMOROUS reply — playful, funny, and human. Keep it light, never mean or try-hard.";
+      return "Write a humorous reply about something specific they said — playful, never mean.";
     case "professional":
-      return "Write a PROFESSIONAL, credible, concise reply.";
+      return "Write a professional, credible reply that engages their specific claim or point.";
     default:
       return "Write a natural, human reply that adds value.";
   }
@@ -215,6 +227,7 @@ function renderThread(request: ReplyGenerationRequest): string[] {
     lines.push(item.text.trim() ? `"""${item.text.trim()}"""` : "(text not shown — respond to it based on who they are)");
   });
 
+  lines.push("", "Your reply must engage the meaning of the target message — not the general topic, not a different message.");
   return lines;
 }
 
@@ -243,7 +256,7 @@ function buildUserPrompt(
     `You are ghostwriting an X reply for ${persona}.`,
     "",
     "VOICE RULES",
-    `- Tone: ${describeTone(settings.tone)}`,
+    `- Tone: ${request.variant ? describeTone(settings.tone) : describeToneForDefaultBatch(settings.tone)}`,
     `- Length: ${length}`,
     `- Emoji: ${emojiRule}`,
     "- Sound like a real person, not an assistant. No philosophy, no life lessons, no corporate voice."
@@ -300,23 +313,46 @@ function buildUserPrompt(
       `Write ${count} reply option${count > 1 ? "s" : ""} in this specific style: ${describeVariant(
         request.variant
       )}`,
-      "It must react to something concrete in the target message and sound like a real person. Do not mark anything recommended."
+      "Stay locked to the target message's actual meaning. React to your anchor detail. Do not mark anything recommended."
     );
   } else {
+    const angleGuide =
+      count === 1
+        ? "Write one grounded reply that adds a specific point."
+        : count === 2
+        ? "Write 2 options: (1) agree and add one concrete detail or example, (2) a practical implication or small nuance on the same point."
+        : "Write options that share the same read of the post but vary the angle — e.g. agree+add a detail, practical 'this is why it matters', small nuance or light pushback on one part. Only use angles that fit; do not force disagreement.";
+
     lines.push(
-      `Write ${count} reply option${count > 1 ? "s" : ""} to the target message.`,
-      "These should feel like the SAME person could have sent any of them: same voice, same core reaction — just a different angle, opening, or detail each time. Give real choices, not opposite stances. Only diverge into disagreement or a question if the message genuinely invites it.",
-      "Vary the first few words and sentence shape across options so they never feel templated.",
-      "Each one must react to something specific in the target message. No summarizing it back.",
+      `Write exactly ${count} reply option${count > 1 ? "s" : ""} to the target message.`,
+      "",
+      "HARD RULES FOR THIS BATCH",
+      "- STATEMENTS ONLY. No questions. No question marks. No curious/interview phrasing.",
+      "- All options must respond to the SAME meaning of the target — not different topics, not generic reactions.",
+      "- Each option must reference something concrete from the target (use your anchor).",
+      "- Options should feel like the same person wrote them — same voice, different angle or emphasis.",
+      "- Convey you understood what they meant, then add something useful.",
+      "",
+      angleGuide,
       count > 1
-        ? "Mark exactly one as recommended — the one that best fits this exact moment — with a short rationale."
+        ? "Mark exactly one as recommended — the most natural fit for this exact post — with a short rationale."
         : "Do not mark it recommended."
     );
   }
 
-  lines.push("", "Do not invent facts, numbers, or stories that are not in the conversation above.");
+  lines.push(
+    "",
+    "Fill understanding and anchor in the JSON before writing variants. Do not invent facts not in the conversation."
+  );
 
   return lines.join("\n");
+}
+
+function describeToneForDefaultBatch(tone: AssistantSettings["tone"]): string {
+  if (tone === "question") {
+    return "curious and engaged, but this batch is statements only — no question marks";
+  }
+  return describeTone(tone);
 }
 
 function describeTone(tone: AssistantSettings["tone"]): string {
@@ -343,7 +379,9 @@ function describeTone(tone: AssistantSettings["tone"]): string {
 
 async function callOpenAiCompatible(
   settings: AssistantSettings,
-  prompt: string
+  prompt: string,
+  variant?: ReplyGenerationRequest["variant"],
+  parseOptions?: { allowQuestions?: boolean }
 ): Promise<ReplyGenerationResult> {
   const baseUrl = (settings.baseUrl || PROVIDER_DEFAULTS.openai.baseUrl).replace(/\/$/, "");
   const response = await safeFetch(`${baseUrl}/chat/completions`, {
@@ -354,9 +392,9 @@ async function callOpenAiCompatible(
     },
     body: JSON.stringify({
       model: settings.model,
-      temperature: 0.9,
-      presence_penalty: 0.4,
-      frequency_penalty: 0.4,
+      temperature: variant ? 0.82 : 0.72,
+      presence_penalty: variant ? 0.25 : 0.1,
+      frequency_penalty: variant ? 0.25 : 0.1,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
@@ -367,10 +405,15 @@ async function callOpenAiCompatible(
 
   const data = await parseProviderResponse(response);
   const content = data.choices?.[0]?.message?.content;
-  return normalizeReplies(content);
+  return normalizeReplies(content, parseOptions);
 }
 
-async function callAnthropic(settings: AssistantSettings, prompt: string): Promise<ReplyGenerationResult> {
+async function callAnthropic(
+  settings: AssistantSettings,
+  prompt: string,
+  variant?: ReplyGenerationRequest["variant"],
+  parseOptions?: { allowQuestions?: boolean }
+): Promise<ReplyGenerationResult> {
   const response = await safeFetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -382,7 +425,7 @@ async function callAnthropic(settings: AssistantSettings, prompt: string): Promi
     body: JSON.stringify({
       model: settings.model,
       max_tokens: 1024,
-      temperature: 0.85,
+      temperature: variant ? 0.82 : 0.72,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: prompt }]
     })
@@ -390,10 +433,15 @@ async function callAnthropic(settings: AssistantSettings, prompt: string): Promi
 
   const data = await parseProviderResponse(response);
   const content = data.content?.find((item: { type?: string }) => item.type === "text")?.text;
-  return normalizeReplies(content);
+  return normalizeReplies(content, parseOptions);
 }
 
-async function callGemini(settings: AssistantSettings, prompt: string): Promise<ReplyGenerationResult> {
+async function callGemini(
+  settings: AssistantSettings,
+  prompt: string,
+  variant?: ReplyGenerationRequest["variant"],
+  parseOptions?: { allowQuestions?: boolean }
+): Promise<ReplyGenerationResult> {
   const model = settings.model;
   const response = await safeFetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
@@ -406,7 +454,7 @@ async function callGemini(settings: AssistantSettings, prompt: string): Promise<
       },
       body: JSON.stringify({
         generationConfig: {
-          temperature: 0.85,
+          temperature: variant ? 0.82 : 0.72,
           responseMimeType: "application/json"
         },
         systemInstruction: {
@@ -424,7 +472,7 @@ async function callGemini(settings: AssistantSettings, prompt: string): Promise<
 
   const data = await parseProviderResponse(response);
   const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  return normalizeReplies(content);
+  return normalizeReplies(content, parseOptions);
 }
 
 async function safeFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -495,7 +543,23 @@ function cleanReplyText(value: unknown): string {
   return text.trim();
 }
 
-function normalizeReplies(content: unknown): ReplyGenerationResult {
+function looksLikeQuestion(text: string): boolean {
+  const value = text.trim();
+  if (!value) {
+    return false;
+  }
+  if (value.includes("?")) {
+    return true;
+  }
+  return /^(what|how|why|when|where|who|which|did|do|does|is|are|can|could|would|will|have you|curious|wondering)\b/i.test(
+    value
+  );
+}
+
+function normalizeReplies(
+  content: unknown,
+  options: { allowQuestions?: boolean } = {}
+): ReplyGenerationResult {
   if (typeof content !== "string") {
     throw new Error("The AI provider returned an empty response.");
   }
@@ -503,6 +567,8 @@ function normalizeReplies(content: unknown): ReplyGenerationResult {
   const parsed = JSON.parse(extractJsonObject(content)) as {
     variants?: unknown;
     replies?: unknown;
+    understanding?: unknown;
+    anchor?: unknown;
   };
 
   const rawList = Array.isArray(parsed.variants)
@@ -511,7 +577,7 @@ function normalizeReplies(content: unknown): ReplyGenerationResult {
     ? parsed.replies
     : [];
 
-  const drafts: ReplyDraft[] = rawList
+  let drafts: ReplyDraft[] = rawList
     .map((item): ReplyDraft => {
       if (typeof item === "string") {
         return { text: cleanReplyText(item), recommended: false };
@@ -525,6 +591,13 @@ function normalizeReplies(content: unknown): ReplyGenerationResult {
       };
     })
     .filter((draft) => draft.text);
+
+  if (!options.allowQuestions) {
+    const statements = drafts.filter((draft) => !looksLikeQuestion(draft.text));
+    if (statements.length > 0) {
+      drafts = statements;
+    }
+  }
 
   if (drafts.length === 0) {
     throw new Error("The AI provider did not return any replies.");
