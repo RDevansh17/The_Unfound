@@ -31,10 +31,10 @@
             <span class="brand-sub">Settings</span>
           </div>
         </div>
-        <h1>Make every reply feel written by you</h1>
+        <h1>Make every reply sound like you</h1>
         <p class="lede">
-          Connect your AI provider, choose a model, and tune tone and voice. The extension only drafts —
-          you review and post.
+          Quality starts with your voice examples and a strong model. The extension reads the post first,
+          then drafts replies that match your tone — you review and post.
         </p>
       </header>
 
@@ -163,19 +163,20 @@
                 id="personalStyle"
                 name="personalStyle"
                 rows="4"
-                placeholder="Example: Direct, lightly warm, no hype, no hashtags. Talk like a founder who ships."
+                placeholder="Example: Direct founder voice. Short sentences. No hype, no hashtags. Opinionated when I have a take. Never preachy."
               ></textarea>
+              <span class="field-hint">Who you are on X — role, energy, what you never sound like.</span>
             </label>
 
             <label class="field">
-              <span class="field-label">Example replies (one per line)</span>
+              <span class="field-label">Example replies (one per line) — most important setting</span>
               <textarea
                 id="exampleReplies"
                 name="exampleReplies"
-                rows="4"
-                placeholder="Paste 3-5 of your real replies so drafts match your voice.&#10;yeah this is the part nobody talks about — the boring middle&#10;how are you handling X when it breaks at scale?"
+                rows="5"
+                placeholder="Paste 5+ real replies you've posted. The model copies your rhythm and word choice.&#10;yeah the second option is underrated — most people bail before that part&#10;we tried this at 3am once and it broke in the best way&#10;the boring middle is where most teams actually lose"
               ></textarea>
-              <span class="field-hint">The model mimics the rhythm and word choice of these, not their content.</span>
+              <span class="field-hint">Without these, drafts stay generic. With them, replies sound like your personal brand.</span>
             </label>
 
             <label class="field">
@@ -219,11 +220,12 @@
           </div>
 
           <div class="summary-card summary-note">
-            <div class="summary-title">Good to know</div>
+            <div class="summary-title">Best results</div>
             <ul>
-              <li>Keys never leave your browser in this build.</li>
-              <li>Drafts are generated on demand, one post at a time.</li>
-              <li>For a paid public release, move calls behind a backend.</li>
+              <li><strong>Example replies</strong> — paste 5+ real ones; biggest quality jump.</li>
+              <li><strong>Model</strong> — GPT-4o or Claude Sonnet 4 for sharpest drafts.</li>
+              <li>Panel shows “Read as” so you can sanity-check understanding.</li>
+              <li>Keys stay local in this build; paid release can use a backend.</li>
             </ul>
           </div>
         </aside>

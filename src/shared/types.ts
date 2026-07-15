@@ -44,6 +44,13 @@ export interface ThreadItem {
   isTarget: boolean;
 }
 
+export interface ReplyInsight {
+  post_meaning: string;
+  author_intent: string;
+  anchor_phrase: string;
+  your_take: string;
+}
+
 export interface ReplyGenerationRequest {
   targetText: string;
   targetAuthor?: string;
@@ -59,6 +66,7 @@ export interface ReplyGenerationRequest {
   sourceUrl: string;
   variant?: ReplyVariant;
   count?: number;
+  insight?: ReplyInsight;
 }
 
 export interface ReplyDraft {
@@ -69,6 +77,7 @@ export interface ReplyDraft {
 
 export interface ReplyGenerationResult {
   replies: ReplyDraft[];
+  insight?: ReplyInsight;
 }
 
 export type RuntimeRequest =

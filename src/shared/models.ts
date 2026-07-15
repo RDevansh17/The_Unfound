@@ -7,9 +7,9 @@ export interface ModelOption {
 
 export const PROVIDER_MODELS: Record<AiProvider, ModelOption[]> = {
   openai: [
-    { value: "gpt-4o", label: "GPT-4o — best all-round" },
-    { value: "gpt-4o-mini", label: "GPT-4o mini — fast + cheap" },
+    { value: "gpt-4o", label: "GPT-4o — best for on-brand replies" },
     { value: "gpt-4.1", label: "GPT-4.1 — strong writing" },
+    { value: "gpt-4o-mini", label: "GPT-4o mini — fast + cheaper" },
     { value: "gpt-4.1-mini", label: "GPT-4.1 mini" },
     { value: "gpt-4.1-nano", label: "GPT-4.1 nano — cheapest" },
     { value: "gpt-4.5-preview", label: "GPT-4.5 (preview)" },
@@ -20,7 +20,7 @@ export const PROVIDER_MODELS: Record<AiProvider, ModelOption[]> = {
     { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo — legacy" }
   ],
   anthropic: [
-    { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+    { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4 — best for on-brand replies" },
     { value: "claude-3-5-sonnet-latest", label: "Claude 3.5 Sonnet" },
     { value: "claude-3-5-haiku-latest", label: "Claude 3.5 Haiku (fast)" },
     { value: "claude-3-opus-latest", label: "Claude 3 Opus" }
@@ -46,7 +46,7 @@ export const PROVIDER_MODELS: Record<AiProvider, ModelOption[]> = {
 
 export const PROVIDER_DEFAULTS: Record<AiProvider, { model: string; baseUrl: string }> = {
   openai: { model: "gpt-4o", baseUrl: "https://api.openai.com/v1" },
-  anthropic: { model: "claude-3-5-sonnet-latest", baseUrl: "" },
+  anthropic: { model: "claude-sonnet-4-20250514", baseUrl: "" },
   gemini: { model: "gemini-2.0-flash", baseUrl: "" },
   groq: { model: "llama-3.3-70b-versatile", baseUrl: "https://api.groq.com/openai/v1" },
   "openai-compatible": { model: "gpt-4o-mini", baseUrl: "https://api.openai.com/v1" }

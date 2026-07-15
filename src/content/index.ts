@@ -10,8 +10,16 @@ type ReplyDraft = {
   rationale?: string;
 };
 
+type ReplyInsight = {
+  post_meaning: string;
+  author_intent: string;
+  anchor_phrase: string;
+  your_take: string;
+};
+
 type ReplyGenerationResult = {
   replies: ReplyDraft[];
+  insight?: ReplyInsight;
 };
 
 type ThreadItem = {
@@ -35,6 +43,7 @@ type ReplyContext = {
   thread?: ThreadItem[];
   visibility?: "high" | "low";
   sourceUrl: string;
+  insight?: ReplyInsight;
 };
 
 type ArticleInfo = {
@@ -237,7 +246,7 @@ async function generateAndShowReplies(
     return;
   }
 
-  showPanel(anchor, { status: "loading", message: "Drafting thoughtful replies..." });
+  showPanel(anchor, { status: "loading", message: "Reading the post, then drafting replies..." });
 
   try {
     const result = await sendRuntimeMessage<ReplyGenerationResult>({
@@ -245,22 +254,26 @@ async function generateAndShowReplies(
       payload: context
     });
 
+    const insight = result.insight;
+    const contextWithInsight = insight ? { ...context, insight } : context;
+
     showPanel(anchor, {
       status: "ready",
       drafts: result.replies,
       contextLabel: describeContextLabel(context),
+      insight,
       onSelect: (reply) => insertReply(textbox, reply),
       regenerate: async (variant) => {
         const regen = await sendRuntimeMessage<ReplyGenerationResult>({
           type: "GENERATE_REPLIES",
-          payload: { ...context, variant, count: 1 }
+          payload: { ...contextWithInsight, variant, count: 1 }
         });
         return regen.replies[0]?.text || "";
       },
       regenerateAll: async () => {
         const regen = await sendRuntimeMessage<ReplyGenerationResult>({
           type: "GENERATE_REPLIES",
-          payload: context
+          payload: contextWithInsight
         });
         return regen.replies;
       }
@@ -897,6 +910,7 @@ function showPanel(
         status: "ready";
         drafts: ReplyDraft[];
         contextLabel?: string;
+        insight?: ReplyInsight;
         onSelect: (reply: string) => void;
         regenerate?: (variant: RegenVariant) => Promise<string>;
         regenerateAll?: () => Promise<ReplyDraft[]>;
@@ -954,6 +968,7 @@ function showPanel(
       state.drafts,
       state.onSelect,
       state.contextLabel,
+      state.insight,
       state.regenerate,
       state.regenerateAll
     );
@@ -1103,6 +1118,7 @@ function renderReadyState(
   drafts: ReplyDraft[],
   onInsert: (reply: string) => void,
   contextLabel?: string,
+  insight?: ReplyInsight,
   regenerate?: (variant: RegenVariant) => Promise<string>,
   regenerateAll?: () => Promise<ReplyDraft[]>
 ): void {
@@ -1115,50 +1131,71 @@ function renderReadyState(
     const list = document.createElement("div");
     list.className = "xra-reply-list";
 
-    if (contextLabel || regenerateAll) {
+    if (contextLabel || insight || regenerateAll) {
       const toolbar = document.createElement("div");
       toolbar.className = "xra-reply-toolbar";
 
-      if (contextLabel) {
-        const context = document.createElement("div");
-        context.className = "xra-context-chip";
-        context.innerHTML =
-          '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.4 8.3 8 10 4.6-1.7 8-5 8-10V6l-8-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
-        const label = document.createElement("span");
-        label.textContent = contextLabel;
-        context.append(label);
-        toolbar.append(context);
+      if (insight?.post_meaning) {
+        const insightChip = document.createElement("div");
+        insightChip.className = "xra-insight-chip";
+        insightChip.title = insight.your_take || insight.post_meaning;
+        const prefix = document.createElement("span");
+        prefix.className = "xra-insight-label";
+        prefix.textContent = "Read as:";
+        const meaning = document.createElement("span");
+        meaning.className = "xra-insight-text";
+        meaning.textContent = insight.post_meaning;
+        insightChip.append(prefix, meaning);
+        toolbar.append(insightChip);
       }
 
-      if (regenerateAll) {
-        const regenAllBtn = document.createElement("button");
-        regenAllBtn.type = "button";
-        regenAllBtn.className = "xra-chip xra-regen-all";
-        regenAllBtn.innerHTML = actionIcon("regen") + "<span>Regenerate all</span>";
-        regenAllBtn.addEventListener("click", async (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          regenAllBtn.disabled = true;
-          subtitle.textContent = "Writing a fresh set…";
-          body.innerHTML = "";
-          const loading = document.createElement("div");
-          loading.className = "xra-loading-block";
-          loading.innerHTML =
-            '<div class="xra-spinner" aria-hidden="true"></div><p class="xra-loading">Writing a fresh set…</p>';
-          body.append(loading);
-          try {
-            const next = await regenerateAll();
-            if (next.length > 0) {
-              currentDrafts = next;
+      if (contextLabel || regenerateAll) {
+        const actions = document.createElement("div");
+        actions.className = "xra-reply-toolbar-actions";
+
+        if (contextLabel) {
+          const context = document.createElement("div");
+          context.className = "xra-context-chip";
+          context.innerHTML =
+            '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.4 8.3 8 10 4.6-1.7 8-5 8-10V6l-8-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+          const label = document.createElement("span");
+          label.textContent = contextLabel;
+          context.append(label);
+          actions.append(context);
+        }
+
+        if (regenerateAll) {
+          const regenAllBtn = document.createElement("button");
+          regenAllBtn.type = "button";
+          regenAllBtn.className = "xra-chip xra-regen-all";
+          regenAllBtn.innerHTML = actionIcon("regen") + "<span>Regenerate all</span>";
+          regenAllBtn.addEventListener("click", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            regenAllBtn.disabled = true;
+            subtitle.textContent = "Writing a fresh set…";
+            body.innerHTML = "";
+            const loading = document.createElement("div");
+            loading.className = "xra-loading-block";
+            loading.innerHTML =
+              '<div class="xra-spinner" aria-hidden="true"></div><p class="xra-loading">Writing a fresh set…</p>';
+            body.append(loading);
+            try {
+              const next = await regenerateAll();
+              if (next.length > 0) {
+                currentDrafts = next;
+              }
+            } catch (error) {
+              subtitle.textContent =
+                error instanceof Error ? error.message : "Could not regenerate. Try again.";
+            } finally {
+              showList();
             }
-          } catch (error) {
-            subtitle.textContent =
-              error instanceof Error ? error.message : "Could not regenerate. Try again.";
-          } finally {
-            showList();
-          }
-        });
-        toolbar.append(regenAllBtn);
+          });
+          actions.append(regenAllBtn);
+        }
+
+        toolbar.append(actions);
       }
 
       list.append(toolbar);
@@ -1851,10 +1888,10 @@ function injectStyles(): void {
     }
 
     .xra-reply-toolbar {
-      align-items: center;
+      align-items: stretch;
       display: flex;
+      flex-direction: column;
       gap: 8px;
-      justify-content: space-between;
       margin-bottom: 4px;
       min-width: 0;
     }
@@ -1872,6 +1909,38 @@ function injectStyles(): void {
       gap: 7px;
       min-width: 0;
       padding: 8px 11px;
+    }
+
+    .xra-insight-chip {
+      background: rgba(29, 155, 240, 0.08);
+      border: 1px solid rgba(29, 155, 240, 0.22);
+      border-radius: 10px;
+      color: #8ec8f6;
+      display: flex;
+      font-size: 11px;
+      gap: 6px;
+      line-height: 1.4;
+      min-width: 0;
+      padding: 8px 11px;
+    }
+
+    .xra-insight-label {
+      color: #6b9cc4;
+      flex-shrink: 0;
+      font-weight: 700;
+    }
+
+    .xra-insight-text {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .xra-reply-toolbar-actions {
+      align-items: center;
+      display: flex;
+      gap: 8px;
+      justify-content: space-between;
+      min-width: 0;
     }
 
     .xra-context-chip span {
