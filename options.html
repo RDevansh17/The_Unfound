@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="options-root">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,7 +12,9 @@
     />
     <script type="module" src="/src/options/main.ts"></script>
   </head>
-  <body class="options-body">
+  <body class="theme-dark">
+    <div class="page-glow" aria-hidden="true"></div>
+
     <main class="options-page">
       <header class="options-hero">
         <div class="brand">
@@ -166,15 +168,15 @@
               <span class="field-hint">Who you are on X — role, energy, what you never sound like.</span>
             </label>
 
-            <label class="field field-highlight">
-              <span class="field-label">Example replies (one per line)</span>
+            <label class="field">
+              <span class="field-label">Example replies (one per line) — most important setting</span>
               <textarea
                 id="exampleReplies"
                 name="exampleReplies"
                 rows="5"
                 placeholder="Paste 5+ real replies you've posted. The model copies your rhythm and word choice.&#10;yeah the second option is underrated — most people bail before that part&#10;we tried this at 3am once and it broke in the best way&#10;the boring middle is where most teams actually lose"
               ></textarea>
-              <span class="field-hint">The single biggest quality upgrade. Without these, drafts stay generic.</span>
+              <span class="field-hint">Without these, drafts stay generic. With them, replies sound like your personal brand.</span>
             </label>
 
             <label class="field">

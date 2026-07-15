@@ -2,7 +2,6 @@ import "../styles.css";
 import type { AssistantSettings, RuntimeResponse } from "../shared/types";
 
 const status = document.querySelector<HTMLElement>("#status");
-const statusPill = document.querySelector<HTMLElement>("#status-pill");
 const statusText = document.querySelector<HTMLElement>(".status-text");
 const optionsButton = document.querySelector<HTMLButtonElement>("#open-options");
 
@@ -29,10 +28,6 @@ chrome.runtime.sendMessage({ type: "GET_SETTINGS" }, (response: RuntimeResponse<
 
   if (response.data.apiKey) {
     setStatus(`Ready · ${formatProvider(response.data.provider)} · ${response.data.model}`, "ready");
-    if (statusPill) {
-      statusPill.textContent = "Ready";
-      statusPill.className = "pill pill-live";
-    }
   } else {
     setStatus("Add your API key in settings to start.", "warning");
   }
