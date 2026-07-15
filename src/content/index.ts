@@ -1651,10 +1651,10 @@ function injectStyles(): void {
   style.textContent = `
     .${BUTTON_CLASS} {
       align-items: center;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 999px;
-      color: #e7e9ea;
+      color: #f2f4f7;
       cursor: pointer;
       display: inline-flex;
       flex-shrink: 0;
@@ -1665,14 +1665,15 @@ function injectStyles(): void {
       margin: 0;
       padding: 0 12px 0 6px;
       position: relative;
-      transition: background 140ms ease, border-color 140ms ease, transform 120ms ease;
+      transition: background 160ms ease, border-color 160ms ease, transform 120ms ease, box-shadow 160ms ease;
       white-space: nowrap;
       z-index: 5;
     }
 
     .${BUTTON_CLASS}:hover {
-      background: rgba(255, 255, 255, 0.09);
-      border-color: rgba(124, 140, 255, 0.5);
+      background: rgba(29, 155, 240, 0.1);
+      border-color: rgba(29, 155, 240, 0.35);
+      box-shadow: 0 0 0 1px rgba(29, 155, 240, 0.08);
     }
 
     .${BUTTON_CLASS}:active {
@@ -1681,9 +1682,9 @@ function injectStyles(): void {
 
     .xra-btn-badge {
       align-items: center;
-      background: #16181c;
-      border: 1px solid #2f3336;
-      border-radius: 4px;
+      background: rgba(29, 155, 240, 0.12);
+      border: 1px solid rgba(29, 155, 240, 0.2);
+      border-radius: 6px;
       color: #1d9bf0;
       display: grid;
       flex-shrink: 0;
@@ -1693,7 +1694,7 @@ function injectStyles(): void {
     }
 
     .${BUTTON_CLASS} .xra-btn-text {
-      color: #e7e9ea;
+      color: #f2f4f7;
     }
 
     .xra-article-button-wrap {
@@ -1722,11 +1723,15 @@ function injectStyles(): void {
 
     #${PANEL_ID} {
       -webkit-font-smoothing: antialiased;
-      background: #101418;
-      border: 1px solid #30363d;
-      border-radius: 14px;
+      background: #151820;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      box-shadow:
+        0 24px 64px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
       box-sizing: border-box;
-      color: #e7e9ea;
+      color: #f2f4f7;
       display: flex;
       flex-direction: column;
       font-family: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -1735,7 +1740,7 @@ function injectStyles(): void {
       overflow: hidden;
       position: fixed;
       transform: translateY(10px) scale(0.98);
-      transition: opacity 180ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+      transition: opacity 200ms ease, transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
       width: min(420px, calc(100vw - 32px));
       z-index: 2147483647;
     }
@@ -1751,7 +1756,8 @@ function injectStyles(): void {
 
     .xra-panel-header {
       align-items: center;
-      border-bottom: 1px solid #2f3336;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
       display: flex;
       gap: 12px;
       padding: 16px 52px 15px 18px;
@@ -1759,25 +1765,25 @@ function injectStyles(): void {
 
     .xra-panel-mark {
       align-items: center;
-      background: #16181c;
-      border: 1px solid #3e4144;
-      border-radius: 8px;
+      background: rgba(29, 155, 240, 0.1);
+      border: 1px solid rgba(29, 155, 240, 0.18);
+      border-radius: 10px;
       color: #1d9bf0;
       display: grid;
       flex-shrink: 0;
-      height: 34px;
+      height: 36px;
       place-items: center;
-      width: 34px;
+      width: 36px;
     }
 
     .xra-panel-title {
       font-size: 15px;
       font-weight: 800;
-      letter-spacing: -0.02em;
+      letter-spacing: -0.025em;
     }
 
     .xra-panel-subtitle {
-      color: #7b8798;
+      color: #9aa3b2;
       font-size: 12px;
       line-height: 1.4;
       margin-top: 2px;
@@ -1786,26 +1792,26 @@ function injectStyles(): void {
     .xra-panel-close {
       align-items: center;
       background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 8px;
-      color: #9aa7b6;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      color: #9aa3b2;
       cursor: pointer;
       display: grid;
       font-size: 18px;
-      height: 30px;
+      height: 32px;
       line-height: 1;
       place-items: center;
       position: absolute;
-      right: 15px;
-      top: 15px;
-      transition: background 130ms ease, color 130ms ease, transform 130ms ease;
-      width: 30px;
+      right: 14px;
+      top: 14px;
+      transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+      width: 32px;
     }
 
     .xra-panel-close:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: #eef3f8;
-      transform: rotate(90deg);
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.14);
+      color: #f2f4f7;
     }
 
     .xra-panel-body {
@@ -1834,13 +1840,14 @@ function injectStyles(): void {
 
     .xra-panel-footer {
       align-items: center;
-      border-top: 1px solid rgba(255, 255, 255, 0.07);
-      color: #616d80;
+      background: rgba(0, 0, 0, 0.15);
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      color: #636d7e;
       display: flex;
       font-size: 11px;
       gap: 6px;
-      letter-spacing: 0.01em;
-      padding: 11px 18px 12px;
+      letter-spacing: 0.02em;
+      padding: 12px 18px;
     }
 
     .xra-loading-block {
@@ -1849,14 +1856,14 @@ function injectStyles(): void {
       gap: 14px;
       justify-items: start;
       min-height: 130px;
-      padding: 20px 8px;
+      padding: 22px 8px;
     }
 
     .xra-spinner {
       animation: xra-spin 0.75s linear infinite;
-      border: 2.5px solid rgba(255, 255, 255, 0.1);
+      border: 2.5px solid rgba(255, 255, 255, 0.08);
       border-radius: 999px;
-      border-top-color: #6a97ff;
+      border-top-color: #1d9bf0;
       height: 24px;
       width: 24px;
     }
@@ -1869,7 +1876,7 @@ function injectStyles(): void {
 
     .xra-loading,
     .xra-error {
-      color: #9aa7b6;
+      color: #9aa3b2;
       font-size: 14px;
       line-height: 1.5;
       margin: 0;
@@ -1877,7 +1884,7 @@ function injectStyles(): void {
     }
 
     .xra-error {
-      color: #fca5b4;
+      color: #f87171;
       padding: 12px 6px;
     }
 
@@ -1898,34 +1905,34 @@ function injectStyles(): void {
 
     .xra-context-chip {
       align-items: center;
-      background: rgba(91, 108, 240, 0.12);
-      border: 1px solid rgba(124, 140, 255, 0.28);
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 10px;
-      color: #b3c6ff;
+      color: #9aa3b2;
       display: flex;
       flex: 1 1 auto;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 600;
       gap: 7px;
       min-width: 0;
-      padding: 8px 11px;
+      padding: 9px 12px;
     }
 
     .xra-insight-chip {
       background: rgba(29, 155, 240, 0.08);
-      border: 1px solid rgba(29, 155, 240, 0.22);
+      border: 1px solid rgba(29, 155, 240, 0.18);
       border-radius: 10px;
       color: #8ec8f6;
       display: flex;
       font-size: 11px;
       gap: 6px;
-      line-height: 1.4;
+      line-height: 1.45;
       min-width: 0;
-      padding: 8px 11px;
+      padding: 9px 12px;
     }
 
     .xra-insight-label {
-      color: #6b9cc4;
+      color: #5ca9e9;
       flex-shrink: 0;
       font-weight: 700;
     }
@@ -1954,7 +1961,7 @@ function injectStyles(): void {
     }
 
     .xra-reply-count {
-      color: #5b6678;
+      color: #636d7e;
       flex-shrink: 0;
       font-size: 11px;
       font-variant-numeric: tabular-nums;
@@ -1962,7 +1969,7 @@ function injectStyles(): void {
     }
 
     .xra-reply-count--over {
-      color: #fca5b4;
+      color: #f87171;
     }
 
     .xra-reply-choice--over {
@@ -1981,10 +1988,10 @@ function injectStyles(): void {
     }
 
     .xra-reply-choice {
-      background: #16181c;
-      border: 1px solid #2f3336;
-      border-radius: 10px;
-      color: #e7e9ea;
+      background: #101218;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      color: #f2f4f7;
       display: grid;
       gap: 11px;
       grid-template-columns: minmax(0, 1fr);
@@ -1993,25 +2000,26 @@ function injectStyles(): void {
       padding: 14px 15px 13px;
       position: relative;
       text-align: left;
-      transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+      transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
     }
 
     .xra-reply-choice::before {
       background: #1d9bf0;
-      border-radius: 10px 0 0 10px;
+      border-radius: 12px 0 0 12px;
       bottom: 12px;
       content: "";
       left: 0;
       opacity: 0;
       position: absolute;
       top: 12px;
-      transition: opacity 160ms ease;
+      transition: opacity 180ms ease;
       width: 3px;
     }
 
     .xra-reply-choice:hover {
-      background: #191e23;
-      border-color: #3e4144;
+      background: #141820;
+      border-color: rgba(255, 255, 255, 0.12);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
     }
 
     .xra-reply-choice:hover::before,
@@ -2036,7 +2044,7 @@ function injectStyles(): void {
     }
 
     .xra-reply-num {
-      color: #4f5b6e;
+      color: #636d7e;
       font-size: 11px;
       font-weight: 800;
       font-variant-numeric: tabular-nums;
@@ -2045,7 +2053,7 @@ function injectStyles(): void {
 
     .xra-reply-label {
       align-items: center;
-      color: #9aa7b6;
+      color: #9aa3b2;
       display: inline-flex;
       font-size: 12px;
       font-weight: 700;
@@ -2054,22 +2062,22 @@ function injectStyles(): void {
 
     .xra-reply-reco {
       align-items: center;
-      background: #0c2b42;
-      border: 0;
-      border-radius: 4px;
+      background: rgba(29, 155, 240, 0.14);
+      border: 1px solid rgba(29, 155, 240, 0.22);
+      border-radius: 6px;
       color: #5ca9e9;
       display: inline-flex;
       font-size: 10px;
       font-weight: 800;
       gap: 4px;
-      letter-spacing: 0.05em;
-      padding: 3px 9px;
+      letter-spacing: 0.06em;
+      padding: 4px 8px;
       text-transform: uppercase;
     }
 
     .xra-reply-choice--reco {
-      background: #141b21;
-      border-left: 2px solid #1d9bf0;
+      background: rgba(29, 155, 240, 0.06);
+      border-color: rgba(29, 155, 240, 0.22);
     }
 
     .xra-reply-choice--reco::before {
@@ -2077,14 +2085,14 @@ function injectStyles(): void {
     }
 
     .xra-reply-why {
-      color: #828fa0;
+      color: #9aa3b2;
       font: 500 12px/1.45 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       overflow-wrap: anywhere;
     }
 
     .xra-reply-body {
-      color: #e7e9ea;
-      font: 400 14.5px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #f2f4f7;
+      font: 500 14.5px/1.55 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       min-width: 0;
       overflow-wrap: anywhere;
       white-space: normal;
@@ -2114,16 +2122,16 @@ function injectStyles(): void {
 
     .xra-chip {
       align-items: center;
-      background: transparent;
-      border: 0;
-      border-radius: 4px;
-      color: #71767b;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      color: #9aa3b2;
       cursor: pointer;
       display: inline-flex;
       font: 700 12px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       gap: 6px;
-      padding: 6px 7px;
-      transition: background 130ms ease, border-color 130ms ease, color 130ms ease, transform 130ms ease;
+      padding: 7px 10px;
+      transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
     }
 
     .xra-chip svg {
@@ -2131,23 +2139,25 @@ function injectStyles(): void {
     }
 
     .xra-chip:hover {
-      background: transparent;
-      color: #e7e9ea;
-      transform: none;
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.14);
+      color: #f2f4f7;
     }
 
     .xra-chip-primary {
       background: #1d9bf0;
       border: 1px solid #1d9bf0;
       border-radius: 999px;
-      color: #000;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.15) inset;
+      color: #fff;
       margin-left: auto;
-      padding: 7px 13px;
+      padding: 8px 14px;
     }
 
     .xra-chip-primary:hover {
-      opacity: 0.9;
-      color: #000;
+      background: #1a8cd8;
+      border-color: #1a8cd8;
+      color: #fff;
     }
 
     .xra-regen {
@@ -2155,13 +2165,14 @@ function injectStyles(): void {
     }
 
     .xra-regen-menu {
-      background: #151b28;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 13px;
+      background: #151820;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
       display: grid;
       gap: 2px;
       min-width: 156px;
-      padding: 7px;
+      padding: 6px;
       position: absolute;
       z-index: 10;
     }
@@ -2173,18 +2184,18 @@ function injectStyles(): void {
     .xra-regen-item {
       background: transparent;
       border: 0;
-      border-radius: 9px;
-      color: #cdd7e1;
+      border-radius: 8px;
+      color: #c8d0dc;
       cursor: pointer;
       font: 600 13px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       padding: 10px 11px;
       text-align: left;
-      transition: background 120ms ease, color 120ms ease;
+      transition: background 140ms ease, color 140ms ease;
     }
 
     .xra-regen-item:hover {
-      background: #0c2b42;
-      color: #e7e9ea;
+      background: rgba(29, 155, 240, 0.12);
+      color: #f2f4f7;
     }
 
     .xra-reply-loading .xra-reply-body {
@@ -2210,26 +2221,26 @@ function injectStyles(): void {
     }
 
     .xra-editor-textarea {
-      background: rgba(0, 0, 0, 0.3);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 13px;
-      color: #eef3f8;
+      background: rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      color: #f2f4f7;
       font: 500 14px/1.55 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       min-height: 132px;
-      padding: 13px 15px;
+      padding: 14px 15px;
       resize: vertical;
       width: 100%;
     }
 
     .xra-editor-textarea:focus {
       background: rgba(0, 0, 0, 0.36);
-      border-color: #1d9bf0;
-      box-shadow: none;
+      border-color: rgba(29, 155, 240, 0.45);
+      box-shadow: 0 0 0 3px rgba(29, 155, 240, 0.1);
       outline: 0;
     }
 
     .xra-editor-counter {
-      color: #6b7787;
+      color: #636d7e;
       font-size: 12px;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
@@ -2237,7 +2248,7 @@ function injectStyles(): void {
     }
 
     .xra-editor-counter--over {
-      color: #fca5b4;
+      color: #f87171;
     }
 
     .xra-editor-actions {
@@ -2249,39 +2260,41 @@ function injectStyles(): void {
 
     .xra-btn {
       background: transparent;
-      border: 1px solid #3e4144;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 999px;
       cursor: pointer;
       font: 700 13px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       padding: 11px 17px;
-      transition: opacity 130ms ease, background 130ms ease, border-color 130ms ease;
+      transition: background 160ms ease, border-color 160ms ease;
     }
 
     .xra-btn-primary {
       background: #1d9bf0;
       border-color: #1d9bf0;
-      color: #000;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset;
+      color: #fff;
     }
 
     .xra-btn-primary:hover {
-      opacity: 0.9;
-      transform: none;
+      background: #1a8cd8;
+      border-color: #1a8cd8;
     }
 
     .xra-btn-secondary {
-      background: rgba(255, 255, 255, 0.08);
-      color: #eef3f8;
+      background: rgba(255, 255, 255, 0.06);
+      color: #f2f4f7;
     }
 
     .xra-btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.1);
     }
 
     .xra-btn-ghost {
       background: transparent;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      color: #9aa7b6;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #9aa3b2;
       margin-right: auto;
+    }
     }
 
     .xra-btn-ghost:hover {
