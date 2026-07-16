@@ -10,6 +10,8 @@ export type ReplyTone =
   | "thought-leader"
   | "question";
 
+export type BrandGoal = "grow" | "authority" | "network" | "engage";
+
 export interface AssistantSettings {
   provider: AiProvider;
   apiKey: string;
@@ -18,8 +20,20 @@ export interface AssistantSettings {
   tone: ReplyTone;
   replyLength: "short" | "medium";
   replyCount: number;
+  /** Who you are on X — role, energy, what you never sound like */
   personalStyle: string;
+  /** Real replies you've posted — primary voice signal */
   exampleReplies: string;
+  /** Niche / domain you want to be known for */
+  niche: string;
+  /** Expertise bullets or topics you speak from */
+  expertise: string;
+  /** Beliefs / hot takes that shape your POV */
+  beliefs: string;
+  /** Phrases you often use (optional brand fingerprints) */
+  signaturePhrases: string;
+  /** What you're optimizing replies for */
+  brandGoal: BrandGoal;
   avoidWords: string;
   includeEmoji: boolean;
 }
@@ -73,11 +87,13 @@ export interface ReplyDraft {
   text: string;
   recommended: boolean;
   rationale?: string;
+  angle?: string;
 }
 
 export interface ReplyGenerationResult {
   replies: ReplyDraft[];
   insight?: ReplyInsight;
+  voiceReady?: boolean;
 }
 
 export type RuntimeRequest =
@@ -93,4 +109,15 @@ export interface RuntimeResponse<T = unknown> {
   ok: boolean;
   data?: T;
   error?: string;
+}
+
+export function countExampleReplies(value: string): number {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean).length;
+}
+
+export function isVoiceReady(settings: Pick<AssistantSettings, "exampleReplies" | "personalStyle" | "niche">): boolean {
+  return countExampleReplies(settings.exampleReplies) >= 3 || Boolean(settings.personalStyle.trim() && settings.niche.trim());
 }

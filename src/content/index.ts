@@ -8,6 +8,7 @@ type ReplyDraft = {
   text: string;
   recommended?: boolean;
   rationale?: string;
+  angle?: string;
 };
 
 type ReplyInsight = {
@@ -20,6 +21,7 @@ type ReplyInsight = {
 type ReplyGenerationResult = {
   replies: ReplyDraft[];
   insight?: ReplyInsight;
+  voiceReady?: boolean;
 };
 
 type ThreadItem = {
@@ -262,6 +264,7 @@ async function generateAndShowReplies(
       drafts: result.replies,
       contextLabel: describeContextLabel(context),
       insight,
+      voiceReady: result.voiceReady,
       onSelect: (reply) => insertReply(textbox, reply),
       regenerate: async (variant) => {
         const regen = await sendRuntimeMessage<ReplyGenerationResult>({
@@ -279,9 +282,13 @@ async function generateAndShowReplies(
       }
     });
   } catch (error) {
+    const message =
+      error instanceof Error && error.message
+        ? error.message
+        : "Couldn't generate a draft. Check your API key or try again.";
     showPanel(anchor, {
       status: "error",
-      message: "Couldn't generate a draft. Check your API key or try again."
+      message
     });
   }
 }
@@ -911,6 +918,7 @@ function showPanel(
         drafts: ReplyDraft[];
         contextLabel?: string;
         insight?: ReplyInsight;
+        voiceReady?: boolean;
         onSelect: (reply: string) => void;
         regenerate?: (variant: RegenVariant) => Promise<string>;
         regenerateAll?: () => Promise<ReplyDraft[]>;
@@ -969,6 +977,7 @@ function showPanel(
       state.onSelect,
       state.contextLabel,
       state.insight,
+      state.voiceReady,
       state.regenerate,
       state.regenerateAll
     );
@@ -1119,6 +1128,7 @@ function renderReadyState(
   onInsert: (reply: string) => void,
   contextLabel?: string,
   insight?: ReplyInsight,
+  voiceReady?: boolean,
   regenerate?: (variant: RegenVariant) => Promise<string>,
   regenerateAll?: () => Promise<ReplyDraft[]>
 ): void {
@@ -1126,10 +1136,18 @@ function renderReadyState(
 
   const showList = (): void => {
     body.innerHTML = "";
-    subtitle.textContent = "Select a draft to edit and insert.";
+    subtitle.textContent = "Pick a draft that sounds like you.";
 
     const list = document.createElement("div");
     list.className = "xra-reply-list";
+
+    if (voiceReady === false) {
+      const voiceHint = document.createElement("div");
+      voiceHint.className = "xra-voice-hint";
+      voiceHint.textContent =
+        "Voice incomplete — add 3+ example replies in settings for sharper, on-brand drafts.";
+      list.append(voiceHint);
+    }
 
     if (contextLabel || insight || regenerateAll) {
       const toolbar = document.createElement("div");
@@ -1147,6 +1165,19 @@ function renderReadyState(
         meaning.textContent = insight.post_meaning;
         insightChip.append(prefix, meaning);
         toolbar.append(insightChip);
+
+        if (insight.your_take) {
+          const takeChip = document.createElement("div");
+          takeChip.className = "xra-take-chip";
+          const takeLabel = document.createElement("span");
+          takeLabel.className = "xra-insight-label";
+          takeLabel.textContent = "Your take:";
+          const takeText = document.createElement("span");
+          takeText.className = "xra-insight-text";
+          takeText.textContent = insight.your_take;
+          takeChip.append(takeLabel, takeText);
+          toolbar.append(takeChip);
+        }
       }
 
       if (contextLabel || regenerateAll) {
@@ -1229,6 +1260,11 @@ function renderReadyState(
         badge.className = "xra-reply-reco";
         badge.textContent = "Recommended";
         labelEl.append(badge);
+      } else if (draft.angle) {
+        const angle = document.createElement("span");
+        angle.className = "xra-reply-angle";
+        angle.textContent = draft.angle.replace(/[-_]/g, " ");
+        labelEl.append(angle);
       }
       meta.append(labelEl);
       topRow.append(meta);
@@ -1918,7 +1954,19 @@ function injectStyles(): void {
       padding: 9px 12px;
     }
 
-    .xra-insight-chip {
+    .xra-voice-hint {
+      background: rgba(245, 165, 36, 0.1);
+      border: 1px solid rgba(245, 165, 36, 0.28);
+      border-radius: 10px;
+      color: #f0c674;
+      font-size: 11.5px;
+      font-weight: 600;
+      line-height: 1.4;
+      padding: 10px 12px;
+    }
+
+    .xra-insight-chip,
+    .xra-take-chip {
       background: rgba(29, 155, 240, 0.08);
       border: 1px solid rgba(29, 155, 240, 0.18);
       border-radius: 10px;
@@ -1931,10 +1979,20 @@ function injectStyles(): void {
       padding: 9px 12px;
     }
 
+    .xra-take-chip {
+      background: rgba(255, 255, 255, 0.03);
+      border-color: rgba(255, 255, 255, 0.08);
+      color: #c4ccd6;
+    }
+
     .xra-insight-label {
       color: #5ca9e9;
       flex-shrink: 0;
       font-weight: 700;
+    }
+
+    .xra-take-chip .xra-insight-label {
+      color: #9aa3b2;
     }
 
     .xra-insight-text {
@@ -2060,7 +2118,8 @@ function injectStyles(): void {
       letter-spacing: 0.01em;
     }
 
-    .xra-reply-reco {
+    .xra-reply-reco,
+    .xra-reply-angle {
       align-items: center;
       background: rgba(29, 155, 240, 0.14);
       border: 1px solid rgba(29, 155, 240, 0.22);
@@ -2070,9 +2129,17 @@ function injectStyles(): void {
       font-size: 10px;
       font-weight: 800;
       gap: 4px;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.04em;
       padding: 4px 8px;
       text-transform: uppercase;
+    }
+
+    .xra-reply-angle {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.1);
+      color: #9aa3b2;
+      letter-spacing: 0.02em;
+      text-transform: none;
     }
 
     .xra-reply-choice--reco {
@@ -2103,21 +2170,9 @@ function injectStyles(): void {
       display: flex;
       flex-wrap: wrap;
       gap: 7px;
-      max-height: 0;
       min-width: 0;
-      opacity: 0;
-      overflow: hidden;
-      padding-top: 0;
-      transform: translateY(-4px);
-      transition: opacity 140ms ease, max-height 140ms ease, padding 140ms ease, transform 140ms ease;
-    }
-
-    .xra-reply-choice:hover .xra-reply-actions,
-    .xra-reply-choice:focus-within .xra-reply-actions {
-      max-height: 44px;
       opacity: 1;
       padding-top: 2px;
-      transform: translateY(0);
     }
 
     .xra-chip {

@@ -7,11 +7,16 @@ export const DEFAULT_SETTINGS: AssistantSettings = {
   apiKey: "",
   model: "gpt-4o",
   baseUrl: "https://api.openai.com/v1",
-  tone: "friendly",
+  tone: "concise",
   replyLength: "short",
   replyCount: 3,
   personalStyle: "",
   exampleReplies: "",
+  niche: "",
+  expertise: "",
+  beliefs: "",
+  signaturePhrases: "",
+  brandGoal: "authority",
   avoidWords: "",
   includeEmoji: false
 };

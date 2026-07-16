@@ -3,6 +3,8 @@ import { getSettings } from "../shared/settings";
 import {
   MAX_REPLY_COUNT,
   MIN_REPLY_COUNT,
+  countExampleReplies,
+  isVoiceReady,
   type AssistantSettings,
   type ReplyDraft,
   type ReplyGenerationRequest,
@@ -12,56 +14,66 @@ import {
   type RuntimeResponse
 } from "../shared/types";
 
-const ANALYSIS_SYSTEM_PROMPT = `You read X conversations and extract what the target message actually means before anyone writes a reply.
+const ANALYSIS_SYSTEM_PROMPT = `You are the reading brain of a personal-brand ghostwriter on X.
+
+Your job: understand the target message so the next step can write a reply that makes people think "this person gets it — and has a point of view."
 
 Return ONLY valid JSON:
-{"post_meaning":"one plain sentence: the specific claim or point, not the topic category","author_intent":"what they're doing: sharing, teaching, venting, joking, choosing, flexing, etc","anchor_phrase":"exact word, number, or short phrase from the target to react to","your_take":"one sentence: what a good reply should ADD (detail, implication, agreement+twist, pushback — never a summary)"}
+{"post_meaning":"one plain sentence: the specific claim or point, not the topic category","author_intent":"what they're doing: sharing, teaching, venting, joking, choosing, flexing, asking, etc","anchor_phrase":"exact word, number, or short phrase from the target to react to","your_take":"one sentence: the sharpest thing THIS brand should add, grounded in their niche/expertise/beliefs when provided — never a summary, never generic advice"}
 
 Rules:
 - Reply to the message marked <<< REPLY TO THIS ONE.
 - post_meaning must be specific enough that someone could disagree with it.
-- anchor_phrase must appear verbatim in the target text (or the nearest interpretable fragment).
-- If the target is very short (under ~30 characters) or cryptic ("Second one.", "This.", "Yep"), use the FULL thread to interpret what they mean. post_meaning should explain what the short message refers to.
+- anchor_phrase must appear in the target text (or the nearest fragment if short/cryptic).
+- If the target is very short ("Second one.", "This.", "Yep"), use the FULL thread. post_meaning must explain what it refers to.
+- When BRAND CONTEXT is provided, your_take must come from THEIR lens (niche, expertise, beliefs) — not a random polite take.
 - Do not write any reply text. Analysis only.`;
 
-const WRITE_SYSTEM_PROMPT = `You ghostwrite X replies for someone building a personal brand. You receive a LOCKED analysis — do not reinterpret the post. Write replies that prove you understood post_meaning by engaging anchor_phrase.
+const WRITE_SYSTEM_PROMPT = `You are an elite personal-brand ghostwriter for X. You write the replies that grow accounts: specific, memorable, human, impossible to confuse with AI.
 
-Each reply must:
-- Reference anchor_phrase or a specific word/number from the target (or the thing the short message refers to)
-- Add your_take — a concrete thought, not a summary or vague praise
-- Sound like a human typing fast: plain, direct, no polish theater
-- Match the person's voice from the user prompt (their examples override everything)
+You receive LOCKED analysis. Do not reinterpret the post. Write from post_meaning + anchor_phrase + your_take.
 
-DEFAULT BATCH (unless user asks for a style like "question"):
+WHAT MAKES A REPLY WIN ON X
+- It proves you read THIS post (anchor or a concrete detail only this post has)
+- It adds a take someone in this person's niche would actually say
+- It sounds like a sharp human typing fast — not a coach, not LinkedIn, not ChatGPT
+- It would look natural next to the voice examples provided
+- Someone scrolling would remember the person who wrote it
+
+DEFAULT BATCH (unless style is "question"):
 - STATEMENTS ONLY. No question marks. No interview curiosity.
-- All options share the SAME post_meaning — different angles only (agree+detail, implication, nuance).
-- Each option must be impossible without having read this exact post.
+- Same post_meaning across all options — different angles:
+  agree+detail | implication | nuance | operator-lens | mild-pushback
+- Each option must be impossible without reading this exact post.
+- Prefer concrete language: numbers, tradeoffs, lived detail, crisp judgments.
+- Vary sentence rhythm across options (one punchy, one slightly longer, one dry).
 
 NEVER
 - Questions, "curious what...", "what made you...", "is there a story...", "how do you..."
-- Aphorisms, philosophy, life lessons, LinkedIn voice, motivational tone
+- Aphorisms, philosophy, life lessons, motivational tone, LinkedIn voice
 - "It's not X, it's Y", "At the end of the day", "The real X is Y", "food for thought", "resonates"
-- Empty praise: "Great post", "So true", "Love this", "Well said", "This.", "100%"
+- Empty praise: "Great post", "So true", "Love this", "Well said", "This.", "100%", "Facts."
 - Summarizing the post back, generic takes that fit any post, inventing facts
-- "Honestly,", "Absolutely,", "Indeed,", "Ah,", "As someone who..."
+- "Honestly,", "Absolutely,", "Indeed,", "Ah,", "As someone who...", "In my experience,"
 - Hashtags, markdown, quotes around the reply
 
 Return ONLY valid JSON:
 {"variants":[{"text":"reply","angle":"agree+detail","recommended":true,"rationale":"under 12 words"}]}
 
 JSON rules:
-- Each variant needs "angle" (agree+detail, implication, nuance, etc).
-- Mark at most one recommended when multiple variants requested.
+- Each variant needs "angle".
+- Mark at most one recommended when multiple variants requested — pick the one that best builds the brand.
 - "text" is the raw reply only.`;
 
 const RETRY_APPENDIX = `
-QUALITY RETRY — previous drafts were too generic or off-topic.
-Every reply MUST:
-- Reference anchor_phrase or a specific word/number from the target text
-- Share the same post_meaning across all options — different angles only
-- Sound like a human with a POV, not an assistant or philosopher
-- Add a concrete thought, never restate or vaguely praise
-No questions. No AI phrases.`;
+QUALITY RETRY — previous drafts were dull, generic, or off-topic.
+Rewrite like a top personal brand account would:
+- Lead with a specific reaction to anchor_phrase
+- Add a sharp take from the brand's niche/expertise/beliefs
+- Sound like their example replies (rhythm + word choice)
+- Zero filler, zero philosophy, zero AI phrases
+- STATEMENTS ONLY unless a question was requested
+Every option must feel sendable as-is.`;
 
 const BUILTIN_AVOID = [
   "game-changer",
@@ -196,6 +208,7 @@ async function generateReplies(
   const count = resolveReplyCount(settings, request);
   const targetText = getTargetText(request);
   const contextTexts = getContextTexts(request);
+  const voiceReady = isVoiceReady(settings);
 
   let insight = request.insight;
   if (!insight?.post_meaning?.trim() || !insight.anchor_phrase?.trim()) {
@@ -212,10 +225,15 @@ async function generateReplies(
 
   let result = await invokeProvider(settings, prompt, WRITE_SYSTEM_PROMPT, request.variant, parseOptions);
   result.insight = insight;
+  result.voiceReady = voiceReady;
 
   const minExpected = request.variant ? 1 : Math.min(count, 2);
-  if (result.replies.length < minExpected && !request.variant) {
-    const retryPrompt = `${prompt}\n${RETRY_APPENDIX}\n\nLOCKED ANCHOR: "${insight.anchor_phrase}"\nLOCKED MEANING: ${insight.post_meaning}`;
+  const needsRetry =
+    result.replies.length < minExpected ||
+    (!request.variant && result.replies.every((draft) => isBlandDraft(draft.text)));
+
+  if (needsRetry && !request.variant) {
+    const retryPrompt = `${prompt}\n${RETRY_APPENDIX}\n\nLOCKED ANCHOR: "${insight.anchor_phrase}"\nLOCKED MEANING: ${insight.post_meaning}\nLOCKED TAKE: ${insight.your_take}`;
     result = await invokeProvider(
       settings,
       retryPrompt,
@@ -224,6 +242,7 @@ async function generateReplies(
       parseOptions
     );
     result.insight = insight;
+    result.voiceReady = voiceReady;
   }
 
   return result;
@@ -234,14 +253,14 @@ async function analyzePost(
   request: ReplyGenerationRequest,
   targetText: string
 ): Promise<ReplyInsight> {
-  const prompt = buildAnalysisPrompt(request, targetText);
+  const prompt = buildAnalysisPrompt(settings, request, targetText);
 
   try {
     const raw = await invokeProviderRaw(
       settings,
       prompt,
       ANALYSIS_SYSTEM_PROMPT,
-      { temperature: 0.35, maxTokens: 500 }
+      { temperature: 0.3, maxTokens: 550 }
     );
     const parsed = JSON.parse(extractJsonObject(raw)) as Partial<ReplyInsight>;
     const insight: ReplyInsight = {
@@ -252,16 +271,35 @@ async function analyzePost(
     };
 
     if (insight.post_meaning && insight.anchor_phrase) {
+      if (!insight.your_take) {
+        insight.your_take = brandFallbackTake(settings);
+      }
       return insight;
     }
   } catch {
     // Fall through to heuristic insight.
   }
 
-  return fallbackInsight(request, targetText);
+  return fallbackInsight(settings, request, targetText);
 }
 
-function fallbackInsight(request: ReplyGenerationRequest, targetText: string): ReplyInsight {
+function brandFallbackTake(settings: AssistantSettings): string {
+  const niche = settings.niche.trim();
+  const belief = parseLines(settings.beliefs)[0];
+  if (belief) {
+    return `Connect their point to this belief: ${belief}`;
+  }
+  if (niche) {
+    return `Add one concrete ${niche} operator detail that only someone in the space would notice.`;
+  }
+  return "Add one specific thought that shows you read their exact words.";
+}
+
+function fallbackInsight(
+  settings: AssistantSettings,
+  request: ReplyGenerationRequest,
+  targetText: string
+): ReplyInsight {
   const thread = request.thread?.filter((item) => item.text.trim()) ?? [];
   const parent = thread.length > 1 ? thread[thread.length - 2]?.text?.trim() : request.rootText?.trim();
   const short = targetText.length < 30;
@@ -282,7 +320,7 @@ function fallbackInsight(request: ReplyGenerationRequest, targetText: string): R
     post_meaning: meaning,
     author_intent: request.isReply ? "replying in thread" : "posting",
     anchor_phrase: anchor,
-    your_take: "Add one specific thought that shows you read their exact words."
+    your_take: brandFallbackTake(settings)
   };
 }
 
@@ -528,20 +566,64 @@ function renderThread(request: ReplyGenerationRequest): string[] {
   return lines;
 }
 
-function buildPersona(settings: AssistantSettings): string {
-  if (settings.personalStyle.trim()) {
-    return settings.personalStyle.trim();
+function describeBrandGoal(goal: AssistantSettings["brandGoal"]): string {
+  switch (goal) {
+    case "grow":
+      return "Optimize for reach and follows — sharp, quotable, scroll-stopping specificity.";
+    case "network":
+      return "Optimize for relationship — warm, specific, leave room for a conversation later.";
+    case "engage":
+      return "Optimize for replies back — add a take that invites a thoughtful response without asking a question.";
+    case "authority":
+    default:
+      return "Optimize for authority — sound like someone who has done the work; concrete and credible.";
   }
-  return "a founder/operator building a personal brand on X: direct, specific, grounded, opinionated when it fits, never hypey or preachy";
 }
 
-function buildAnalysisPrompt(request: ReplyGenerationRequest, targetText: string): string {
+function buildBrandContext(settings: AssistantSettings): string[] {
+  const lines: string[] = ["BRAND CONTEXT"];
+  const niche = settings.niche.trim();
+  const style = settings.personalStyle.trim();
+  const expertise = parseLines(settings.expertise);
+  const beliefs = parseLines(settings.beliefs);
+  const signatures = parseLines(settings.signaturePhrases);
+
+  if (style) {
+    lines.push(`Voice: ${style}`);
+  } else {
+    lines.push(
+      "Voice: direct personal-brand operator on X — specific, grounded, opinionated when earned, never hypey or preachy"
+    );
+  }
+  if (niche) {
+    lines.push(`Niche / known for: ${niche}`);
+  }
+  if (expertise.length > 0) {
+    lines.push(`Expertise: ${expertise.slice(0, 8).join("; ")}`);
+  }
+  if (beliefs.length > 0) {
+    lines.push(`Beliefs / hot takes to draw from: ${beliefs.slice(0, 6).join("; ")}`);
+  }
+  if (signatures.length > 0) {
+    lines.push(`Signature phrases (use sparingly, only if natural): ${signatures.slice(0, 5).join("; ")}`);
+  }
+  lines.push(`Brand goal: ${describeBrandGoal(settings.brandGoal)}`);
+  return lines;
+}
+
+function buildAnalysisPrompt(
+  settings: AssistantSettings,
+  request: ReplyGenerationRequest,
+  targetText: string
+): string {
   const target = handleOrName(request.targetHandle, request.targetAuthor, "the author");
   const lines = [
     "Analyze the target message before any reply is written.",
     "",
     `Target is by ${target}.`,
-    `Target text length: ${targetText.length} characters.`
+    `Target text length: ${targetText.length} characters.`,
+    "",
+    ...buildBrandContext(settings)
   ];
 
   if (targetText.length < 30) {
@@ -566,7 +648,11 @@ function buildAnalysisPrompt(request: ReplyGenerationRequest, targetText: string
     lines.push("", `Target message (by ${target}):`, `"""${targetText}"""`);
   }
 
-  lines.push("", "Return post_meaning, author_intent, anchor_phrase, your_take. No reply text.");
+  lines.push(
+    "",
+    "your_take MUST reflect this brand's niche/expertise/beliefs when available.",
+    "Return post_meaning, author_intent, anchor_phrase, your_take. No reply text."
+  );
   return lines.join("\n");
 }
 
@@ -581,19 +667,21 @@ function buildWritePrompt(
       ? "1 short line, under ~180 characters"
       : "1-2 natural lines, under 280 characters";
   const emojiRule = settings.includeEmoji ? "at most one emoji, only if natural" : "no emoji";
-  const persona = buildPersona(settings);
   const { kind, calibration } = classifyContext(request);
   const visibilityNote = describeVisibility(request.visibility);
   const examples = parseLines(settings.exampleReplies);
   const avoid = [...BUILTIN_AVOID, ...parseAvoidWords(settings.avoidWords)];
+  const exampleCount = countExampleReplies(settings.exampleReplies);
 
   const lines = [
-    `Ghostwrite X replies for: ${persona}`,
+    "Ghostwrite premium X replies for a personal brand.",
     "",
-    "BRAND RULE",
-    "Every reply is public. It should make readers remember this person for being sharp and specific — not for sounding like AI or a motivational account.",
+    ...buildBrandContext(settings),
     "",
-    "VOICE",
+    "OUTPUT RULE",
+    "Every reply is public brand equity. Prefer one sharp specific line over a polished generic paragraph.",
+    "",
+    "VOICE CONTROLS",
     `- Tone: ${request.variant ? describeTone(settings.tone) : describeToneForDefaultBatch(settings.tone)}`,
     `- Length: ${length}`,
     `- Emoji: ${emojiRule}`
@@ -602,16 +690,21 @@ function buildWritePrompt(
   if (examples.length > 0) {
     lines.push(
       "",
-      "MATCH THIS VOICE EXACTLY (rhythm, length, word choice — copy the style, not the content):"
+      `MATCH THIS VOICE EXACTLY (${exampleCount} examples — rhythm, length, slang, punctuation):`
     );
-    examples.slice(0, 8).forEach((example) => lines.push(`"${example}"`));
-    lines.push("If your reply doesn't sound like it could sit next to these examples, rewrite it.");
+    examples.slice(0, 10).forEach((example) => lines.push(`"${example}"`));
+    lines.push(
+      "Hard rule: if a draft wouldn't sit next to these examples in the same feed, rewrite it."
+    );
   } else {
-    lines.push("", "No voice examples provided — write plain, direct, human. Short sentences. No filler.");
+    lines.push(
+      "",
+      "No voice examples yet — write plain, punchy, human. Short sentences. Zero filler. Still specific to the post."
+    );
   }
 
   if (avoid.length > 0) {
-    lines.push("", `NEVER use: ${[...new Set(avoid)].slice(0, 24).join(", ")}`);
+    lines.push("", `NEVER use: ${[...new Set(avoid)].slice(0, 28).join(", ")}`);
   }
 
   lines.push(
@@ -628,10 +721,7 @@ function buildWritePrompt(
   lines.push(
     "",
     "TARGET (reference only — meaning is locked in analysis):",
-    `"""${getTargetText(request)}"""`
-  );
-
-  lines.push(
+    `"""${getTargetText(request)}"""`,
     "",
     "LOCKED ANALYSIS (do not reinterpret — write from this):",
     `post_meaning: ${insight.post_meaning}`,
@@ -639,7 +729,7 @@ function buildWritePrompt(
     `anchor_phrase: "${insight.anchor_phrase}"`,
     `your_take: ${insight.your_take}`,
     "",
-    "Every reply must engage anchor_phrase and add your_take.",
+    "Every reply must engage anchor_phrase and deliver your_take in this brand's voice.",
     "",
     "TASK"
   );
@@ -655,12 +745,12 @@ function buildWritePrompt(
       "",
       "RULES",
       "- STATEMENTS ONLY. No questions. No question marks.",
-      "- All options = same post_meaning, different angles (agree+detail, implication, nuance).",
-      `- Each must reference "${insight.anchor_phrase}" or a specific word from the target.`,
+      "- Same post_meaning; different angles: agree+detail, implication, nuance, operator-lens, mild-pushback.",
+      `- Each must reference "${insight.anchor_phrase}" or a concrete detail from the target.`,
       "- Each must sound like the same person wrote all of them.",
-      "- Convey you understood what they meant, then add YOUR thought.",
+      "- Sound like someone building a personal brand — memorable, not polite.",
       count > 1
-        ? "- Mark one recommended — the reply you'd actually send to build your brand."
+        ? "- Mark one recommended — the reply you'd actually send."
         : "- Do not mark recommended."
     );
   }
@@ -719,9 +809,9 @@ async function callOpenAiCompatible(
     },
     body: JSON.stringify({
       model: settings.model,
-      temperature: variant ? 0.78 : 0.58,
-      presence_penalty: variant ? 0.2 : 0.08,
-      frequency_penalty: variant ? 0.2 : 0.08,
+      temperature: variant ? 0.82 : 0.68,
+      presence_penalty: variant ? 0.25 : 0.12,
+      frequency_penalty: variant ? 0.25 : 0.12,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
@@ -752,8 +842,8 @@ async function callAnthropic(
     },
     body: JSON.stringify({
       model: settings.model,
-      max_tokens: 1200,
-      temperature: variant ? 0.78 : 0.58,
+      max_tokens: 1400,
+      temperature: variant ? 0.82 : 0.68,
       system: systemPrompt,
       messages: [{ role: "user", content: prompt }]
     })
@@ -783,7 +873,7 @@ async function callGemini(
       },
       body: JSON.stringify({
         generationConfig: {
-          temperature: variant ? 0.78 : 0.58,
+          temperature: variant ? 0.82 : 0.68,
           responseMimeType: "application/json"
         },
         systemInstruction: {
@@ -885,19 +975,17 @@ function looksLikeQuestion(text: string): boolean {
 
 function overlapsWithText(draft: string, source: string): boolean {
   const draftLower = draft.toLowerCase();
-  const sourceLower = source.toLowerCase();
-
-  const tokens = sourceLower.split(/\s+/).filter((token) => token.length >= 2);
-  if (tokens.some((token) => draftLower.includes(token))) {
-    return true;
-  }
-
   const significant = extractSignificantWords(source);
   if (significant.length === 0) {
-    return draftLower.length >= 10;
+    const tokens = source
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((token) => token.length >= 3);
+    return tokens.some((token) => draftLower.includes(token)) || draftLower.length >= 12;
   }
 
-  return significant.some((word) => draftLower.includes(word));
+  const hits = significant.filter((word) => draftLower.includes(word)).length;
+  return hits >= Math.min(2, significant.length);
 }
 
 function hasContextualOverlap(draft: string, targetText: string, contextTexts?: string[], anchorPhrase?: string): boolean {
@@ -934,7 +1022,31 @@ function isLowQualityDraft(text: string, options: ParseOptions): boolean {
   if (isAiSlop(text)) {
     return true;
   }
+  if (isBlandDraft(text)) {
+    return true;
+  }
   if (options.targetText && !hasContextualOverlap(text, options.targetText, options.contextTexts, options.anchorPhrase)) {
+    return true;
+  }
+  return false;
+}
+
+function isBlandDraft(text: string): boolean {
+  const value = text.trim().toLowerCase();
+  if (!value) {
+    return true;
+  }
+  if (
+    /^(this|that|yeah|yep|true|facts|agree|same|exactly|needed this|so good|well put)\b/.test(value) &&
+    value.length < 40
+  ) {
+    return true;
+  }
+  if (/^(great|amazing|awesome|incredible|powerful|important)\b/.test(value)) {
+    return true;
+  }
+  // Too many soft openers → dull AI cadence
+  if (/^(i think|i feel|i believe|it seems|it feels|interesting)\b/.test(value)) {
     return true;
   }
   return false;
@@ -1034,10 +1146,12 @@ function normalizeReplies(content: unknown, options: ParseOptions = {}): ReplyGe
       }
       const record = (item ?? {}) as Record<string, unknown>;
       const rationale = record.rationale ? String(record.rationale).trim() : undefined;
+      const angle = record.angle ? String(record.angle).trim() : undefined;
       return {
         text: cleanReplyText(record.text),
         recommended: Boolean(record.recommended),
-        rationale: rationale || undefined
+        rationale: rationale || undefined,
+        angle: angle || undefined
       };
     })
     .filter((draft) => draft.text);
@@ -1045,6 +1159,12 @@ function normalizeReplies(content: unknown, options: ParseOptions = {}): ReplyGe
   const qualityFiltered = drafts.filter((draft) => !isLowQualityDraft(draft.text, options));
   if (qualityFiltered.length > 0) {
     drafts = qualityFiltered;
+  } else {
+    // Prefer nothing bland over shipping all low-quality drafts when possible
+    const nonSlop = drafts.filter((draft) => !isAiSlop(draft.text) && (!options.allowQuestions ? !looksLikeQuestion(draft.text) : true));
+    if (nonSlop.length > 0) {
+      drafts = nonSlop;
+    }
   }
 
   if (drafts.length === 0) {
