@@ -4,32 +4,8 @@ type RuntimeResponse<T = unknown> = {
   error?: string;
 };
 
-type ReplyDraft = {
-  text: string;
-  recommended?: boolean;
-  rationale?: string;
-  angle?: string;
-};
-
-type ReplyInsight = {
-  post_meaning: string;
-  author_intent: string;
-  anchor_phrase: string;
-  your_take: string;
-};
-
 type ReplyGenerationResult = {
-  replies: ReplyDraft[];
-  insight?: ReplyInsight;
-  voiceReady?: boolean;
-};
-
-type ThreadItem = {
-  author?: string;
-  handle?: string;
-  text: string;
-  isMine: boolean;
-  isTarget: boolean;
+  replies: string[];
 };
 
 type ReplyContext = {
@@ -42,10 +18,7 @@ type ReplyContext = {
   rootHandle?: string;
   isRootMine: boolean;
   isReply: boolean;
-  thread?: ThreadItem[];
-  visibility?: "high" | "low";
   sourceUrl: string;
-  insight?: ReplyInsight;
 };
 
 type ArticleInfo = {
@@ -199,32 +172,7 @@ async function openAssistantForArticle(article: HTMLElement, anchor: HTMLElement
   }
 
   lastTargetTextbox = textbox;
-  // The reply dialog is now open. Re-read context (dialog target + recovered
-  // original post) and keep whichever version carries the richest thread.
-  const dialogContext = gatherReplyContext(article);
-  await generateAndShowReplies(pickRicherContext(context, dialogContext), anchor, textbox);
-}
-
-function contextRichness(context: ReplyContext): number {
-  let score = 0;
-  if (context.targetText.trim()) {
-    score += 1;
-  }
-  if (context.rootText && context.rootText.trim()) {
-    score += 2;
-  }
-  score += context.thread?.filter((item) => item.text.trim()).length ?? 0;
-  return score;
-}
-
-function pickRicherContext(a: ReplyContext, b: ReplyContext): ReplyContext {
-  if (!b.targetText.trim()) {
-    return a;
-  }
-  if (!a.targetText.trim()) {
-    return b;
-  }
-  return contextRichness(b) >= contextRichness(a) ? b : a;
+  await generateAndShowReplies(context, anchor, textbox);
 }
 
 async function openAssistantForComposer(textbox: HTMLElement, anchor: HTMLElement): Promise<void> {
@@ -248,7 +196,7 @@ async function generateAndShowReplies(
     return;
   }
 
-  showPanel(anchor, { status: "loading", message: "Reading the post, then drafting replies..." });
+  showPanel(anchor, { status: "loading", message: "Drafting thoughtful replies..." });
 
   try {
     const result = await sendRuntimeMessage<ReplyGenerationResult>({
@@ -256,39 +204,23 @@ async function generateAndShowReplies(
       payload: context
     });
 
-    const insight = result.insight;
-    const contextWithInsight = insight ? { ...context, insight } : context;
-
     showPanel(anchor, {
       status: "ready",
-      drafts: result.replies,
+      replies: result.replies,
       contextLabel: describeContextLabel(context),
-      insight,
-      voiceReady: result.voiceReady,
       onSelect: (reply) => insertReply(textbox, reply),
       regenerate: async (variant) => {
         const regen = await sendRuntimeMessage<ReplyGenerationResult>({
           type: "GENERATE_REPLIES",
-          payload: { ...contextWithInsight, variant, count: 1 }
+          payload: { ...context, variant, count: 1 }
         });
-        return regen.replies[0]?.text || "";
-      },
-      regenerateAll: async () => {
-        const regen = await sendRuntimeMessage<ReplyGenerationResult>({
-          type: "GENERATE_REPLIES",
-          payload: contextWithInsight
-        });
-        return regen.replies;
+        return regen.replies[0] || "";
       }
     });
   } catch (error) {
-    const message =
-      error instanceof Error && error.message
-        ? error.message
-        : "Couldn't generate a draft. Check your API key or try again.";
     showPanel(anchor, {
       status: "error",
-      message
+      message: error instanceof Error ? error.message : "Could not generate replies."
     });
   }
 }
@@ -360,256 +292,71 @@ function findMatchingPageArticle(info: ArticleInfo): HTMLElement | null {
   );
 }
 
-function isMineHandle(handle: string | undefined, own: string | null): boolean {
-  return Boolean(own && handle && handle === own);
-}
-
-function articleToThreadItem(info: ArticleInfo, own: string | null, isTarget: boolean): ThreadItem {
-  return {
-    author: info.name,
-    handle: info.handle,
-    text: info.text,
-    isMine: isMineHandle(info.handle, own),
-    isTarget
-  };
-}
-
-function getOpenReplyDialog(): HTMLElement | null {
-  return (
-    document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]') ||
-    document.querySelector<HTMLElement>('[role="dialog"]')
-  );
-}
-
-// The reply dialog renders the exact tweets you are replying to, oldest first,
-// which is the most reliable source of thread context across timeline and status pages.
-function getDialogThread(own: string | null): ThreadItem[] {
-  const dialog = getOpenReplyDialog();
-  if (!dialog) {
-    return [];
-  }
-
-  const infos = Array.from(dialog.querySelectorAll<HTMLElement>(ARTICLE_SELECTOR))
-    .map((article) => getArticleInfo(article))
-    .filter((info) => info.text.trim());
-
-  if (infos.length === 0) {
-    return [];
-  }
-
-  return infos.map((info, index) => articleToThreadItem(info, own, index === infos.length - 1));
-}
-
-// On a status page the conversation column shows ancestors above the focused tweet.
-function getPageThread(targetArticle: HTMLElement, own: string | null): ThreadItem[] {
-  const target = getArticleInfo(targetArticle);
-  const conversation = getConversationArticles();
-  const pageArticle = conversation.includes(targetArticle)
-    ? targetArticle
-    : findMatchingPageArticle(target) || targetArticle;
-  const targetIndex = conversation.indexOf(pageArticle);
-  const onStatusPage = location.pathname.includes("/status/");
-
-  const items: ThreadItem[] = [];
-
-  if (onStatusPage && targetIndex > 0) {
-    const original = getArticleInfo(conversation[0]);
-    if (original.text && original.handle !== target.handle) {
-      items.push(articleToThreadItem(original, own, false));
-    }
-
-    // Pull in the immediate parent when the target replied to someone other than the original poster.
-    const parents = getReplyingToHandles(pageArticle).filter(
-      (handle) => handle !== target.handle && handle !== original.handle
-    );
-    if (parents.length > 0) {
-      const parentArticle = conversation
-        .slice(1, targetIndex)
-        .reverse()
-        .find((article) => getArticleInfo(article).handle === parents[0]);
-      if (parentArticle) {
-        const parent = getArticleInfo(parentArticle);
-        if (parent.text) {
-          items.push(articleToThreadItem(parent, own, false));
-        }
-      }
-    }
-
-    items.push(articleToThreadItem(target, own, true));
-    return items;
-  }
-
-  // Timeline: we can read the target, and often the "Replying to @handle" hint (parent text hidden).
-  const replyingTo = getReplyingToHandles(pageArticle).filter((handle) => handle !== target.handle);
-  if (replyingTo.length > 0) {
-    items.push({
-      handle: replyingTo[0],
-      text: "",
-      isMine: isMineHandle(replyingTo[0], own),
-      isTarget: false
-    });
-  }
-  items.push(articleToThreadItem(target, own, true));
-  return items;
-}
-
-// Read the "Replying to @handle" hint from the open dialog and/or the target article.
-function getParentHandle(targetArticle: HTMLElement, targetHandle?: string): string | undefined {
-  const handles: string[] = [];
-  const dialog = getOpenReplyDialog();
-  if (dialog) {
-    handles.push(...getReplyingToHandles(dialog));
-  }
-  handles.push(...getReplyingToHandles(targetArticle));
-  return handles.find((handle) => handle && handle !== targetHandle);
-}
-
-// Find a post's text anywhere in the rendered conversation by its author handle.
-function findPostTextByHandle(handle: string, excludeText?: string): ArticleInfo | undefined {
-  const matches = getConversationArticles()
-    .map((article) => getArticleInfo(article))
-    .filter((info) => info.handle === handle && info.text.trim() && info.text !== excludeText);
-
-  if (matches.length === 0) {
-    return undefined;
-  }
-
-  // Prefer an original post (one that is not itself a "Replying to" reply) when we can tell.
-  return matches[0];
-}
-
-function threadHasRootText(thread: ThreadItem[]): boolean {
-  return thread.some((item) => !item.isTarget && item.text.trim());
-}
-
-function collectThread(targetArticle: HTMLElement, own: string | null): ThreadItem[] {
-  const dialogThread = getDialogThread(own);
-  const pageThread = getPageThread(targetArticle, own);
-
-  // Prefer whichever source already carries the original post text.
-  let base: ThreadItem[];
-  if (threadHasRootText(dialogThread)) {
-    base = dialogThread;
-  } else if (threadHasRootText(pageThread)) {
-    base = pageThread;
-  } else {
-    base = dialogThread.length > 0 ? dialogThread : pageThread;
-  }
-
-  if (base.length === 0) {
-    return base;
-  }
-
-  // If we still don't have the original post text (common when replying to a reply
-  // straight from the timeline), try to recover it from the "Replying to" handle.
-  if (!threadHasRootText(base)) {
-    const targetItem = base.find((item) => item.isTarget) || base[base.length - 1];
-    const parentHandle = getParentHandle(targetArticle, targetItem?.handle);
-
-    if (parentHandle && parentHandle !== targetItem?.handle) {
-      const original = findPostTextByHandle(parentHandle, targetItem?.text);
-      const rootItem: ThreadItem = {
-        handle: parentHandle,
-        author: original?.name,
-        text: original?.text || "",
-        isMine: isMineHandle(parentHandle, own),
-        isTarget: false
-      };
-      // Replace any empty placeholder ancestor, then prepend the recovered root.
-      base = [rootItem, ...base.filter((item) => item.isTarget || item.text.trim())];
-    }
-  }
-
-  return base;
-}
-
 function gatherReplyContext(targetArticle: HTMLElement): ReplyContext {
   const own = getOwnHandle();
-  const thread = collectThread(targetArticle, own);
-
-  const targetItem = thread.find((item) => item.isTarget) || thread[thread.length - 1];
-  const ancestors = thread.filter((item) => item !== targetItem);
-  const rootItem = ancestors[0];
-  const isReply = ancestors.length > 0;
-
   const target = getArticleInfo(targetArticle);
-  const pageArticleForVisibility =
-    getConversationArticles().find((article) => getArticleInfo(article).handle === targetItem.handle) ||
-    targetArticle;
+
+  const onStatusPage = location.pathname.includes("/status/");
+  const conversation = getConversationArticles();
+
+  // When the target came from the compose dialog, map it back to the page article for thread context.
+  const pageArticle = conversation.includes(targetArticle)
+    ? targetArticle
+    : findMatchingPageArticle(target);
+
+  let rootInfo: ArticleInfo | undefined;
+  let isReply = false;
+
+  const targetIndex = pageArticle ? conversation.indexOf(pageArticle) : -1;
+
+  if (onStatusPage && conversation.length > 0 && targetIndex > 0) {
+    // Ancestors render above the target; the first article is the original post.
+    rootInfo = getArticleInfo(conversation[0]);
+    isReply = true;
+  } else {
+    // Timeline / dialog: a reply tweet shows a "Replying to @handle" line.
+    const replyingTo = getReplyingToHandles(pageArticle || targetArticle).filter(
+      (handle) => handle !== target.handle
+    );
+    if (replyingTo.length > 0) {
+      isReply = true;
+      rootInfo = { text: "", handle: replyingTo[0] };
+    }
+  }
+
+  const rootHandle = rootInfo?.handle;
 
   return {
-    targetText: targetItem.text || target.text,
-    targetAuthor: targetItem.author,
-    targetHandle: targetItem.handle,
-    isTargetMine: Boolean(targetItem.isMine),
-    rootText: rootItem?.text || undefined,
-    rootAuthor: rootItem?.author,
-    rootHandle: rootItem?.handle,
-    isRootMine: Boolean(rootItem?.isMine),
+    targetText: target.text,
+    targetAuthor: target.name,
+    targetHandle: target.handle,
+    isTargetMine: Boolean(own && target.handle && target.handle === own),
+    rootText: rootInfo?.text || undefined,
+    rootAuthor: rootInfo?.name,
+    rootHandle,
+    isRootMine: Boolean(own && rootHandle && rootHandle === own),
     isReply,
-    thread,
-    visibility: getArticleVisibility(pageArticleForVisibility),
     sourceUrl: location.href
   };
-}
-
-function parseCount(raw: string): number {
-  const cleaned = raw.replace(/,/g, "").trim();
-  const match = cleaned.match(/^([\d.]+)\s*([KMB])?$/i);
-  if (!match) {
-    return 0;
-  }
-  const value = parseFloat(match[1]);
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  const suffix = match[2]?.toUpperCase();
-  const multiplier = suffix === "B" ? 1e9 : suffix === "M" ? 1e6 : suffix === "K" ? 1e3 : 1;
-  return value * multiplier;
-}
-
-function getArticleVisibility(article: HTMLElement): "high" | "low" | undefined {
-  const group = article.querySelector<HTMLElement>('[role="group"]');
-  const label = group?.getAttribute("aria-label") || "";
-  const matches = Array.from(label.matchAll(/([\d.,]+)\s*(views?|likes?|reposts?|replies|bookmarks?)/gi));
-  if (matches.length === 0) {
-    return undefined;
-  }
-
-  const counts = new Map<string, number>();
-  for (const match of matches) {
-    const kind = match[2].toLowerCase().replace(/s$/, "").replace("replie", "reply");
-    counts.set(kind, parseCount(match[1]));
-  }
-
-  const views = counts.get("view") ?? 0;
-  const likes = counts.get("like") ?? 0;
-  const reposts = counts.get("repost") ?? 0;
-
-  if (views >= 20000 || likes >= 300 || reposts >= 100) {
-    return "high";
-  }
-  return "low";
 }
 
 function describeContextLabel(context: ReplyContext): string {
   const target = context.targetHandle ? `@${context.targetHandle}` : "a post";
   const root = context.rootHandle ? `@${context.rootHandle}` : "the original poster";
-  const visibility = context.visibility ? ` · ${context.visibility}` : "";
 
   if (!context.isReply) {
-    return (context.isTargetMine ? "Warm post" : `Replying to ${target}'s post`) + visibility;
+    return context.isTargetMine ? "Adding to your own post" : `Replying to ${target}'s post`;
   }
 
   if (context.isRootMine && !context.isTargetMine) {
-    return `Own thread reply${visibility}`;
+    return `Replying to ${target}'s comment on your post`;
   }
 
   if (context.isTargetMine) {
-    return `Own thread${visibility}`;
+    return "Continuing your own thread";
   }
 
-  return `Replying to ${target}'s comment under ${root}${visibility}`;
+  return `Replying to ${target}'s comment under ${root}`;
 }
 
 function getFallbackContext(): ReplyContext {
@@ -915,13 +662,10 @@ function showPanel(
     | { status: "error"; message: string }
     | {
         status: "ready";
-        drafts: ReplyDraft[];
+        replies: string[];
         contextLabel?: string;
-        insight?: ReplyInsight;
-        voiceReady?: boolean;
         onSelect: (reply: string) => void;
         regenerate?: (variant: RegenVariant) => Promise<string>;
-        regenerateAll?: () => Promise<ReplyDraft[]>;
       }
 ): void {
   closePanel(false);
@@ -969,18 +713,7 @@ function showPanel(
   });
 
   if (state.status === "ready") {
-    renderReadyState(
-      panel,
-      body,
-      subtitle,
-      state.drafts,
-      state.onSelect,
-      state.contextLabel,
-      state.insight,
-      state.voiceReady,
-      state.regenerate,
-      state.regenerateAll
-    );
+    renderReadyState(panel, body, subtitle, state.replies, state.onSelect, state.contextLabel, state.regenerate);
   } else if (state.status === "loading") {
     const loading = document.createElement("div");
     loading.className = "xra-loading-block";
@@ -1118,128 +851,41 @@ function confirmSendThenClose(): void {
   window.setTimeout(poll, 150);
 }
 
-const REPLY_LIMIT = 280;
-
 function renderReadyState(
   panel: HTMLElement,
   body: HTMLElement,
   subtitle: HTMLElement,
-  drafts: ReplyDraft[],
+  replies: string[],
   onInsert: (reply: string) => void,
   contextLabel?: string,
-  insight?: ReplyInsight,
-  voiceReady?: boolean,
-  regenerate?: (variant: RegenVariant) => Promise<string>,
-  regenerateAll?: () => Promise<ReplyDraft[]>
+  regenerate?: (variant: RegenVariant) => Promise<string>
 ): void {
-  let currentDrafts = drafts;
+  const labels = ["Agree + add", "Nuance", "Question"];
 
   const showList = (): void => {
     body.innerHTML = "";
-    subtitle.textContent = "Pick a draft that sounds like you.";
+    subtitle.textContent = "Select a draft to edit and insert.";
 
     const list = document.createElement("div");
     list.className = "xra-reply-list";
 
-    if (voiceReady === false) {
-      const voiceHint = document.createElement("div");
-      voiceHint.className = "xra-voice-hint";
-      voiceHint.textContent =
-        "Voice incomplete — add 3+ example replies in settings for sharper, on-brand drafts.";
-      list.append(voiceHint);
+    if (contextLabel) {
+      const context = document.createElement("div");
+      context.className = "xra-context-chip";
+      context.innerHTML =
+        '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.4 8.3 8 10 4.6-1.7 8-5 8-10V6l-8-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+      const label = document.createElement("span");
+      label.textContent = contextLabel;
+      context.append(label);
+      list.append(context);
     }
 
-    if (contextLabel || insight || regenerateAll) {
-      const toolbar = document.createElement("div");
-      toolbar.className = "xra-reply-toolbar";
-
-      if (insight?.post_meaning) {
-        const insightChip = document.createElement("div");
-        insightChip.className = "xra-insight-chip";
-        insightChip.title = insight.your_take || insight.post_meaning;
-        const prefix = document.createElement("span");
-        prefix.className = "xra-insight-label";
-        prefix.textContent = "Read as:";
-        const meaning = document.createElement("span");
-        meaning.className = "xra-insight-text";
-        meaning.textContent = insight.post_meaning;
-        insightChip.append(prefix, meaning);
-        toolbar.append(insightChip);
-
-        if (insight.your_take) {
-          const takeChip = document.createElement("div");
-          takeChip.className = "xra-take-chip";
-          const takeLabel = document.createElement("span");
-          takeLabel.className = "xra-insight-label";
-          takeLabel.textContent = "Your take:";
-          const takeText = document.createElement("span");
-          takeText.className = "xra-insight-text";
-          takeText.textContent = insight.your_take;
-          takeChip.append(takeLabel, takeText);
-          toolbar.append(takeChip);
-        }
-      }
-
-      if (contextLabel || regenerateAll) {
-        const actions = document.createElement("div");
-        actions.className = "xra-reply-toolbar-actions";
-
-        if (contextLabel) {
-          const context = document.createElement("div");
-          context.className = "xra-context-chip";
-          context.innerHTML =
-            '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.4 8.3 8 10 4.6-1.7 8-5 8-10V6l-8-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
-          const label = document.createElement("span");
-          label.textContent = contextLabel;
-          context.append(label);
-          actions.append(context);
-        }
-
-        if (regenerateAll) {
-          const regenAllBtn = document.createElement("button");
-          regenAllBtn.type = "button";
-          regenAllBtn.className = "xra-chip xra-regen-all";
-          regenAllBtn.innerHTML = actionIcon("regen") + "<span>Regenerate all</span>";
-          regenAllBtn.addEventListener("click", async (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            regenAllBtn.disabled = true;
-            subtitle.textContent = "Writing a fresh set…";
-            body.innerHTML = "";
-            const loading = document.createElement("div");
-            loading.className = "xra-loading-block";
-            loading.innerHTML =
-              '<div class="xra-spinner" aria-hidden="true"></div><p class="xra-loading">Writing a fresh set…</p>';
-            body.append(loading);
-            try {
-              const next = await regenerateAll();
-              if (next.length > 0) {
-                currentDrafts = next;
-              }
-            } catch (error) {
-              subtitle.textContent =
-                error instanceof Error ? error.message : "Could not regenerate. Try again.";
-            } finally {
-              showList();
-            }
-          });
-          actions.append(regenAllBtn);
-        }
-
-        toolbar.append(actions);
-      }
-
-      list.append(toolbar);
-    }
-
-    currentDrafts.forEach((draft, index) => {
-      let current = draft.text;
+    replies.forEach((reply, index) => {
+      const label = labels[index] || `Option ${index + 1}`;
+      let current = reply;
 
       const card = document.createElement("div");
       card.className = "xra-reply-choice";
-      if (draft.recommended) {
-        card.classList.add("xra-reply-choice--reco");
-      }
 
       const topRow = document.createElement("div");
       topRow.className = "xra-reply-top";
@@ -1250,53 +896,17 @@ function renderReadyState(
       const num = document.createElement("span");
       num.className = "xra-reply-num";
       num.textContent = String(index + 1).padStart(2, "0");
-      meta.append(num);
 
       const labelEl = document.createElement("span");
       labelEl.className = "xra-reply-label";
+      labelEl.textContent = label;
 
-      if (draft.recommended) {
-        const badge = document.createElement("span");
-        badge.className = "xra-reply-reco";
-        badge.textContent = "Recommended";
-        labelEl.append(badge);
-      } else if (draft.angle) {
-        const angle = document.createElement("span");
-        angle.className = "xra-reply-angle";
-        angle.textContent = draft.angle.replace(/[-_]/g, " ");
-        labelEl.append(angle);
-      }
-      meta.append(labelEl);
+      meta.append(num, labelEl);
       topRow.append(meta);
-
-      const count = document.createElement("span");
-      count.className = "xra-reply-count";
-      topRow.append(count);
 
       const bodyText = document.createElement("span");
       bodyText.className = "xra-reply-body";
       bodyText.textContent = current;
-
-      const why = document.createElement("span");
-      why.className = "xra-reply-why";
-      if (draft.recommended && draft.rationale) {
-        why.textContent = draft.rationale;
-      } else {
-        why.hidden = true;
-      }
-
-      const updateCount = (): void => {
-        const length = current.length;
-        count.textContent = `${length}/${REPLY_LIMIT}`;
-        count.classList.toggle("xra-reply-count--over", length > REPLY_LIMIT);
-      };
-      updateCount();
-
-      const clearRecommendation = (): void => {
-        card.classList.remove("xra-reply-choice--reco");
-        labelEl.textContent = "";
-        why.hidden = true;
-      };
 
       const actions = document.createElement("div");
       actions.className = "xra-reply-actions";
@@ -1325,7 +935,7 @@ function renderReadyState(
       editBtn.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        showEditor(current, draft.recommended ? "Recommended draft" : `Draft ${index + 1}`);
+        showEditor(current, labelEl.textContent || label);
       });
 
       const insertBtn = document.createElement("button");
@@ -1335,12 +945,6 @@ function renderReadyState(
       insertBtn.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (current.length > REPLY_LIMIT) {
-          subtitle.textContent = `That draft is ${current.length - REPLY_LIMIT} characters over the limit. Edit it down first.`;
-          card.classList.add("xra-reply-choice--over");
-          window.setTimeout(() => card.classList.remove("xra-reply-choice--over"), 1200);
-          return;
-        }
         onInsert(current);
       });
 
@@ -1379,9 +983,7 @@ function renderReadyState(
               if (next) {
                 current = next;
                 bodyText.textContent = next;
-                clearRecommendation();
                 labelEl.textContent = option.label;
-                updateCount();
               } else {
                 bodyText.textContent = previous;
               }
@@ -1427,7 +1029,7 @@ function renderReadyState(
       }
 
       actions.append(insertBtn);
-      card.append(topRow, bodyText, why, actions);
+      card.append(topRow, bodyText, actions);
       list.append(card);
     });
 
@@ -1495,13 +1097,7 @@ function renderReadyState(
     insertBtn.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      const value = textarea.value.trim();
-      if (value.length > REPLY_LIMIT) {
-        counter.classList.add("xra-editor-counter--over");
-        textarea.focus();
-        return;
-      }
-      onInsert(value);
+      onInsert(textarea.value.trim());
     });
 
     actions.append(backBtn, copyBtn, insertBtn);
@@ -1592,10 +1188,8 @@ function closePanel(animate = true): void {
 }
 
 function positionPanel(panel: HTMLElement): void {
-  const pad = 16;
-  const gap = 18;
-  const panelWidth = Math.min(400, window.innerWidth - pad * 2);
-  const maxHeight = Math.min(window.innerHeight - pad * 2, 760);
+  const panelWidth = Math.min(420, window.innerWidth - 32);
+  const maxHeight = Math.min(window.innerHeight - 32, 720);
   panel.style.width = `${panelWidth}px`;
   panel.style.maxHeight = `${maxHeight}px`;
 
@@ -1606,6 +1200,8 @@ function positionPanel(panel: HTMLElement): void {
     null;
 
   const dialogRect = dialog?.getBoundingClientRect();
+  const gap = 20;
+  const pad = 16;
 
   let left = window.innerWidth - panelWidth - pad;
   let top = pad;
@@ -1616,19 +1212,16 @@ function positionPanel(panel: HTMLElement): void {
 
     if (spaceRight >= panelWidth) {
       left = Math.round(dialogRect.right + gap);
-      top = Math.round(dialogRect.top);
+      top = clamp(Math.round(dialogRect.top), pad, window.innerHeight - maxHeight - pad);
     } else if (spaceLeft >= panelWidth) {
       left = Math.round(dialogRect.left - gap - panelWidth);
-      top = Math.round(dialogRect.top);
+      top = clamp(Math.round(dialogRect.top), pad, window.innerHeight - maxHeight - pad);
     } else {
+      // Not enough side room: dock top-right of the viewport so the compose controls stay free.
       left = window.innerWidth - panelWidth - pad;
       top = pad;
     }
   }
-
-  // Never let the panel spill outside the viewport in either axis.
-  left = clamp(left, pad, Math.max(pad, window.innerWidth - panelWidth - pad));
-  top = clamp(top, pad, Math.max(pad, window.innerHeight - maxHeight - pad));
 
   panel.style.top = `${top}px`;
   panel.style.left = `${left}px`;
@@ -1688,9 +1281,9 @@ function injectStyles(): void {
     .${BUTTON_CLASS} {
       align-items: center;
       background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.14);
       border-radius: 999px;
-      color: #f2f4f7;
+      color: #e7e9ea;
       cursor: pointer;
       display: inline-flex;
       flex-shrink: 0;
@@ -1701,15 +1294,14 @@ function injectStyles(): void {
       margin: 0;
       padding: 0 12px 0 6px;
       position: relative;
-      transition: background 160ms ease, border-color 160ms ease, transform 120ms ease, box-shadow 160ms ease;
+      transition: background 140ms ease, border-color 140ms ease, transform 120ms ease;
       white-space: nowrap;
       z-index: 5;
     }
 
     .${BUTTON_CLASS}:hover {
-      background: rgba(29, 155, 240, 0.1);
-      border-color: rgba(29, 155, 240, 0.35);
-      box-shadow: 0 0 0 1px rgba(29, 155, 240, 0.08);
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.28);
     }
 
     .${BUTTON_CLASS}:active {
@@ -1718,10 +1310,10 @@ function injectStyles(): void {
 
     .xra-btn-badge {
       align-items: center;
-      background: rgba(29, 155, 240, 0.12);
-      border: 1px solid rgba(29, 155, 240, 0.2);
-      border-radius: 6px;
-      color: #1d9bf0;
+      background: linear-gradient(150deg, #1d9bf0, #0b5f9e);
+      border-radius: 7px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+      color: #fff;
       display: grid;
       flex-shrink: 0;
       height: 20px;
@@ -1730,7 +1322,10 @@ function injectStyles(): void {
     }
 
     .${BUTTON_CLASS} .xra-btn-text {
-      color: #f2f4f7;
+      background: linear-gradient(180deg, #ffffff, #cdd6e0);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
 
     .xra-article-button-wrap {
@@ -1759,30 +1354,22 @@ function injectStyles(): void {
 
     #${PANEL_ID} {
       -webkit-font-smoothing: antialiased;
-      background: #151820;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 16px;
-      box-shadow:
-        0 24px 64px rgba(0, 0, 0, 0.5),
-        0 0 0 1px rgba(255, 255, 255, 0.04),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04);
-      box-sizing: border-box;
-      color: #f2f4f7;
+      backdrop-filter: blur(20px);
+      background: linear-gradient(180deg, rgba(15, 20, 30, 0.98), rgba(9, 12, 19, 0.98));
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 20px;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      color: #eef3f8;
       display: flex;
       flex-direction: column;
       font-family: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-      max-width: calc(100vw - 24px);
       opacity: 0;
       overflow: hidden;
       position: fixed;
-      transform: translateY(10px) scale(0.98);
-      transition: opacity 200ms ease, transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
-      width: min(420px, calc(100vw - 32px));
+      transform: translateY(8px) scale(0.99);
+      transition: opacity 150ms ease, transform 150ms ease;
+      width: min(408px, calc(100vw - 32px));
       z-index: 2147483647;
-    }
-
-    #${PANEL_ID} * {
-      box-sizing: border-box;
     }
 
     #${PANEL_ID}.xra-panel-visible {
@@ -1792,34 +1379,33 @@ function injectStyles(): void {
 
     .xra-panel-header {
       align-items: center;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent);
       border-bottom: 1px solid rgba(255, 255, 255, 0.06);
       display: flex;
-      gap: 12px;
-      padding: 16px 52px 15px 18px;
+      gap: 11px;
+      padding: 16px 48px 15px 18px;
     }
 
     .xra-panel-mark {
       align-items: center;
-      background: rgba(29, 155, 240, 0.1);
-      border: 1px solid rgba(29, 155, 240, 0.18);
+      background: linear-gradient(150deg, #1d9bf0, #0b5f9e);
       border-radius: 10px;
-      color: #1d9bf0;
+      box-shadow: 0 6px 16px rgba(29, 155, 240, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+      color: #fff;
       display: grid;
       flex-shrink: 0;
-      height: 36px;
+      height: 32px;
       place-items: center;
-      width: 36px;
+      width: 32px;
     }
 
     .xra-panel-title {
       font-size: 15px;
       font-weight: 800;
-      letter-spacing: -0.025em;
+      letter-spacing: -0.02em;
     }
 
     .xra-panel-subtitle {
-      color: #9aa3b2;
+      color: #6b7787;
       font-size: 12px;
       line-height: 1.4;
       margin-top: 2px;
@@ -1827,81 +1413,58 @@ function injectStyles(): void {
 
     .xra-panel-close {
       align-items: center;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 10px;
-      color: #9aa3b2;
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 9px;
+      color: #9aa7b6;
       cursor: pointer;
       display: grid;
       font-size: 18px;
-      height: 32px;
+      height: 30px;
       line-height: 1;
       place-items: center;
       position: absolute;
       right: 14px;
       top: 14px;
-      transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
-      width: 32px;
+      transition: background 120ms ease, color 120ms ease;
+      width: 30px;
     }
 
     .xra-panel-close:hover {
       background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.14);
-      color: #f2f4f7;
+      color: #eef3f8;
     }
 
     .xra-panel-body {
       flex: 1 1 auto;
-      overflow-x: hidden;
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      padding: 14px 16px 12px;
-    }
-
-    .xra-panel-body::-webkit-scrollbar {
-      width: 10px;
-    }
-
-    .xra-panel-body::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.12);
-      background-clip: padding-box;
-      border: 3px solid transparent;
-      border-radius: 999px;
-    }
-
-    .xra-panel-body::-webkit-scrollbar-thumb:hover {
-      background: rgba(255, 255, 255, 0.2);
-      background-clip: padding-box;
+      overflow: auto;
+      padding: 14px;
     }
 
     .xra-panel-footer {
-      align-items: center;
-      background: rgba(0, 0, 0, 0.15);
       border-top: 1px solid rgba(255, 255, 255, 0.06);
-      color: #636d7e;
-      display: flex;
+      color: #6b7787;
       font-size: 11px;
-      gap: 6px;
-      letter-spacing: 0.02em;
-      padding: 12px 18px;
+      letter-spacing: 0.01em;
+      padding: 11px 18px 13px;
     }
 
     .xra-loading-block {
       align-items: center;
       display: grid;
-      gap: 14px;
+      gap: 12px;
       justify-items: start;
-      min-height: 130px;
-      padding: 22px 8px;
+      min-height: 120px;
+      padding: 18px 8px;
     }
 
     .xra-spinner {
-      animation: xra-spin 0.75s linear infinite;
-      border: 2.5px solid rgba(255, 255, 255, 0.08);
+      animation: xra-spin 0.8s linear infinite;
+      border: 2px solid rgba(255, 255, 255, 0.1);
       border-radius: 999px;
       border-top-color: #1d9bf0;
-      height: 24px;
-      width: 24px;
+      height: 22px;
+      width: 22px;
     }
 
     @keyframes xra-spin {
@@ -1912,133 +1475,34 @@ function injectStyles(): void {
 
     .xra-loading,
     .xra-error {
-      color: #9aa3b2;
+      color: #9aa7b6;
       font-size: 14px;
       line-height: 1.5;
       margin: 0;
-      overflow-wrap: anywhere;
     }
 
     .xra-error {
-      color: #f87171;
+      color: #fb7185;
       padding: 12px 6px;
     }
 
     .xra-reply-list {
       display: grid;
-      gap: 10px;
-      min-width: 0;
-    }
-
-    .xra-reply-toolbar {
-      align-items: stretch;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-bottom: 4px;
-      min-width: 0;
+      gap: 9px;
     }
 
     .xra-context-chip {
       align-items: center;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(29, 155, 240, 0.1);
+      border: 1px solid rgba(29, 155, 240, 0.22);
       border-radius: 10px;
-      color: #9aa3b2;
+      color: #7dd3fc;
       display: flex;
-      flex: 1 1 auto;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
       gap: 7px;
-      min-width: 0;
-      padding: 9px 12px;
-    }
-
-    .xra-voice-hint {
-      background: rgba(245, 165, 36, 0.1);
-      border: 1px solid rgba(245, 165, 36, 0.28);
-      border-radius: 10px;
-      color: #f0c674;
-      font-size: 11.5px;
-      font-weight: 600;
-      line-height: 1.4;
-      padding: 10px 12px;
-    }
-
-    .xra-insight-chip,
-    .xra-take-chip {
-      background: rgba(29, 155, 240, 0.08);
-      border: 1px solid rgba(29, 155, 240, 0.18);
-      border-radius: 10px;
-      color: #8ec8f6;
-      display: flex;
-      font-size: 11px;
-      gap: 6px;
-      line-height: 1.45;
-      min-width: 0;
-      padding: 9px 12px;
-    }
-
-    .xra-take-chip {
-      background: rgba(255, 255, 255, 0.03);
-      border-color: rgba(255, 255, 255, 0.08);
-      color: #c4ccd6;
-    }
-
-    .xra-insight-label {
-      color: #5ca9e9;
-      flex-shrink: 0;
-      font-weight: 700;
-    }
-
-    .xra-take-chip .xra-insight-label {
-      color: #9aa3b2;
-    }
-
-    .xra-insight-text {
-      min-width: 0;
-      overflow-wrap: anywhere;
-    }
-
-    .xra-reply-toolbar-actions {
-      align-items: center;
-      display: flex;
-      gap: 8px;
-      justify-content: space-between;
-      min-width: 0;
-    }
-
-    .xra-context-chip span {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .xra-regen-all {
-      flex-shrink: 0;
-    }
-
-    .xra-reply-count {
-      color: #636d7e;
-      flex-shrink: 0;
-      font-size: 11px;
-      font-variant-numeric: tabular-nums;
-      font-weight: 700;
-    }
-
-    .xra-reply-count--over {
-      color: #f87171;
-    }
-
-    .xra-reply-choice--over {
-      animation: xra-shake 0.3s ease;
-      border-color: rgba(251, 113, 133, 0.65) !important;
-    }
-
-    @keyframes xra-shake {
-      0%, 100% { transform: translateX(0); }
-      25% { transform: translateX(-4px); }
-      75% { transform: translateX(4px); }
+      margin-bottom: 3px;
+      padding: 8px 11px;
     }
 
     .xra-context-chip svg {
@@ -2046,38 +1510,34 @@ function injectStyles(): void {
     }
 
     .xra-reply-choice {
-      background: #101218;
+      background: rgba(255, 255, 255, 0.025);
       border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px;
-      color: #f2f4f7;
+      border-radius: 14px;
+      color: #eef3f8;
       display: grid;
-      gap: 11px;
-      grid-template-columns: minmax(0, 1fr);
-      min-width: 0;
-      overflow: hidden;
-      padding: 14px 15px 13px;
+      gap: 10px;
+      padding: 14px 15px;
       position: relative;
       text-align: left;
-      transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+      transition: background 140ms ease, border-color 140ms ease;
     }
 
     .xra-reply-choice::before {
       background: #1d9bf0;
-      border-radius: 12px 0 0 12px;
-      bottom: 12px;
+      border-radius: 0 3px 3px 0;
       content: "";
       left: 0;
       opacity: 0;
       position: absolute;
-      top: 12px;
-      transition: opacity 180ms ease;
+      top: 14px;
+      bottom: 14px;
+      transition: opacity 140ms ease;
       width: 3px;
     }
 
     .xra-reply-choice:hover {
-      background: #141820;
-      border-color: rgba(255, 255, 255, 0.12);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.16);
     }
 
     .xra-reply-choice:hover::before,
@@ -2088,21 +1548,17 @@ function injectStyles(): void {
     .xra-reply-top {
       align-items: center;
       display: flex;
-      gap: 8px;
       justify-content: space-between;
-      min-width: 0;
     }
 
     .xra-reply-meta {
-      align-items: center;
+      align-items: baseline;
       display: flex;
       gap: 8px;
-      min-width: 0;
-      overflow: hidden;
     }
 
     .xra-reply-num {
-      color: #636d7e;
+      color: #4a5768;
       font-size: 11px;
       font-weight: 800;
       font-variant-numeric: tabular-nums;
@@ -2110,83 +1566,46 @@ function injectStyles(): void {
     }
 
     .xra-reply-label {
-      align-items: center;
-      color: #9aa3b2;
-      display: inline-flex;
+      color: #9aa7b6;
       font-size: 12px;
       font-weight: 700;
       letter-spacing: 0.01em;
     }
 
-    .xra-reply-reco,
-    .xra-reply-angle {
-      align-items: center;
-      background: rgba(29, 155, 240, 0.14);
-      border: 1px solid rgba(29, 155, 240, 0.22);
-      border-radius: 6px;
-      color: #5ca9e9;
-      display: inline-flex;
-      font-size: 10px;
-      font-weight: 800;
-      gap: 4px;
-      letter-spacing: 0.04em;
-      padding: 4px 8px;
-      text-transform: uppercase;
-    }
-
-    .xra-reply-angle {
-      background: rgba(255, 255, 255, 0.04);
-      border-color: rgba(255, 255, 255, 0.1);
-      color: #9aa3b2;
-      letter-spacing: 0.02em;
-      text-transform: none;
-    }
-
-    .xra-reply-choice--reco {
-      background: rgba(29, 155, 240, 0.06);
-      border-color: rgba(29, 155, 240, 0.22);
-    }
-
-    .xra-reply-choice--reco::before {
-      opacity: 1;
-    }
-
-    .xra-reply-why {
-      color: #9aa3b2;
-      font: 500 12px/1.45 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
-      overflow-wrap: anywhere;
-    }
-
     .xra-reply-body {
-      color: #f2f4f7;
-      font: 500 14.5px/1.55 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
-      min-width: 0;
-      overflow-wrap: anywhere;
-      white-space: normal;
-      word-break: break-word;
+      color: #dbe3ec;
+      font: 500 14px/1.5 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
     }
 
     .xra-reply-actions {
       display: flex;
-      flex-wrap: wrap;
       gap: 7px;
-      min-width: 0;
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      transform: translateY(-4px);
+      transition: opacity 150ms ease, max-height 150ms ease, transform 150ms ease;
+    }
+
+    .xra-reply-choice:hover .xra-reply-actions,
+    .xra-reply-choice:focus-within .xra-reply-actions {
+      max-height: 48px;
       opacity: 1;
-      padding-top: 2px;
+      transform: translateY(0);
     }
 
     .xra-chip {
       align-items: center;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 8px;
-      color: #9aa3b2;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 9px;
+      color: #cdd7e1;
       cursor: pointer;
       display: inline-flex;
       font: 700 12px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       gap: 6px;
-      padding: 7px 10px;
-      transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+      padding: 7px 11px;
+      transition: background 130ms ease, border-color 130ms ease, color 130ms ease;
     }
 
     .xra-chip svg {
@@ -2194,25 +1613,20 @@ function injectStyles(): void {
     }
 
     .xra-chip:hover {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.14);
-      color: #f2f4f7;
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
     }
 
     .xra-chip-primary {
-      background: #1d9bf0;
-      border: 1px solid #1d9bf0;
-      border-radius: 999px;
-      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.15) inset;
-      color: #fff;
+      background: rgba(29, 155, 240, 0.16);
+      border-color: rgba(29, 155, 240, 0.45);
+      color: #6aa8ff;
       margin-left: auto;
-      padding: 8px 14px;
     }
 
     .xra-chip-primary:hover {
-      background: #1a8cd8;
-      border-color: #1a8cd8;
-      color: #fff;
+      background: rgba(29, 155, 240, 0.26);
+      color: #eaf5ff;
     }
 
     .xra-regen {
@@ -2220,13 +1634,13 @@ function injectStyles(): void {
     }
 
     .xra-regen-menu {
-      background: #151820;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #141b28;
+      border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 12px;
-      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
       display: grid;
       gap: 2px;
-      min-width: 156px;
+      min-width: 150px;
       padding: 6px;
       position: absolute;
       z-index: 10;
@@ -2240,17 +1654,17 @@ function injectStyles(): void {
       background: transparent;
       border: 0;
       border-radius: 8px;
-      color: #c8d0dc;
+      color: #cdd7e1;
       cursor: pointer;
       font: 600 13px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
-      padding: 10px 11px;
+      padding: 9px 10px;
       text-align: left;
-      transition: background 140ms ease, color 140ms ease;
+      transition: background 120ms ease, color 120ms ease;
     }
 
     .xra-regen-item:hover {
-      background: rgba(29, 155, 240, 0.12);
-      color: #f2f4f7;
+      background: rgba(29, 155, 240, 0.16);
+      color: #eaf5ff;
     }
 
     .xra-reply-loading .xra-reply-body {
@@ -2264,8 +1678,7 @@ function injectStyles(): void {
 
     .xra-editor-wrap {
       display: grid;
-      gap: 11px;
-      min-width: 0;
+      gap: 10px;
     }
 
     .xra-editor-label {
@@ -2277,25 +1690,25 @@ function injectStyles(): void {
 
     .xra-editor-textarea {
       background: rgba(0, 0, 0, 0.28);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 12px;
-      color: #f2f4f7;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 13px;
+      color: #eef3f8;
       font: 500 14px/1.55 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       min-height: 132px;
-      padding: 14px 15px;
+      padding: 12px 14px;
       resize: vertical;
       width: 100%;
     }
 
     .xra-editor-textarea:focus {
-      background: rgba(0, 0, 0, 0.36);
-      border-color: rgba(29, 155, 240, 0.45);
-      box-shadow: 0 0 0 3px rgba(29, 155, 240, 0.1);
+      background: rgba(0, 0, 0, 0.34);
+      border-color: rgba(29, 155, 240, 0.7);
+      box-shadow: 0 0 0 3px rgba(29, 155, 240, 0.18);
       outline: 0;
     }
 
     .xra-editor-counter {
-      color: #636d7e;
+      color: #6b7787;
       font-size: 12px;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
@@ -2303,53 +1716,52 @@ function injectStyles(): void {
     }
 
     .xra-editor-counter--over {
-      color: #f87171;
+      color: #fb7185;
     }
 
     .xra-editor-actions {
       display: flex;
-      flex-wrap: wrap;
       gap: 8px;
       justify-content: flex-end;
     }
 
     .xra-btn {
-      background: transparent;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 0;
       border-radius: 999px;
       cursor: pointer;
       font: 700 13px/1 "Manrope", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
       padding: 11px 17px;
-      transition: background 160ms ease, border-color 160ms ease;
+      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+    }
+
+    .xra-btn:active {
+      transform: translateY(1px);
     }
 
     .xra-btn-primary {
-      background: #1d9bf0;
-      border-color: #1d9bf0;
-      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset;
+      background: linear-gradient(135deg, #1d9bf0, #0b5f9e);
+      box-shadow: 0 10px 22px rgba(29, 155, 240, 0.28);
       color: #fff;
     }
 
     .xra-btn-primary:hover {
-      background: #1a8cd8;
-      border-color: #1a8cd8;
+      box-shadow: 0 14px 28px rgba(29, 155, 240, 0.4);
     }
 
     .xra-btn-secondary {
-      background: rgba(255, 255, 255, 0.06);
-      color: #f2f4f7;
+      background: rgba(255, 255, 255, 0.08);
+      color: #eef3f8;
     }
 
     .xra-btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.14);
     }
 
     .xra-btn-ghost {
       background: transparent;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: #9aa3b2;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #9aa7b6;
       margin-right: auto;
-    }
     }
 
     .xra-btn-ghost:hover {
@@ -2358,15 +1770,14 @@ function injectStyles(): void {
     }
 
     .xra-editor-hint {
-      color: #616d80;
+      color: #6b7787;
       font-size: 11px;
       line-height: 1.45;
       margin: 2px 0 0;
-      overflow-wrap: anywhere;
     }
 
     .xra-panel-success {
-      border-color: #1d9bf0;
+      outline: 2px solid rgba(29, 155, 240, 0.75);
     }
   `;
   document.documentElement.append(style);

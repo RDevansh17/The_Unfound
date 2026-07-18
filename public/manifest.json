@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "X Reply Assistant",
   "description": "Draft thoughtful AI-assisted replies for X posts and replies while keeping you in control.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "action": {
     "default_title": "X Reply Assistant",
     "default_popup": "popup.html"

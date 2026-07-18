@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="options-page">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,12 +12,14 @@
     />
     <script type="module" src="/src/options/main.ts"></script>
   </head>
-  <body>
+  <body class="theme-dark">
+    <div class="page-glow" aria-hidden="true"></div>
+
     <main class="options-page">
       <header class="options-hero">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
               <path
                 d="M3 5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5v8A2.5 2.5 0 0 1 18.5 16H9l-4.2 3.6A1 1 0 0 1 3 18.8V5.5Z"
                 fill="currentColor"
@@ -26,22 +28,14 @@
           </div>
           <div class="brand-text">
             <span class="brand-name">Reply Assistant</span>
-            <span class="brand-sub">Brand settings</span>
+            <span class="brand-sub">Settings</span>
           </div>
         </div>
-        <h1>Build a reply voice people remember</h1>
+        <h1>Make every reply feel written by you</h1>
         <p class="lede">
-          Set who you are on X, paste your real replies, then connect a model. Drafts will sound like
-          you — not a generic assistant.
+          Connect your AI provider, choose a model, and tune tone and voice. The extension only drafts —
+          you review and post.
         </p>
-
-        <div class="setup-meter" id="setup-meter">
-          <div class="setup-meter-top">
-            <span class="setup-meter-label">Setup strength</span>
-            <span class="setup-meter-score" id="setup-score">0%</span>
-          </div>
-          <div class="setup-bar"><span id="setup-bar-fill"></span></div>
-        </div>
       </header>
 
       <div class="options-layout">
@@ -50,109 +44,18 @@
             <div class="card-head">
               <div class="card-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-                  <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4 0-7 2-7 4.5V20h14v-1.5C19 16 16 14 12 14Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-                </svg>
-              </div>
-              <div>
-                <h2>Your brand voice</h2>
-                <p>This is what makes drafts sound like you.</p>
-              </div>
-              <span class="card-badge">Most important</span>
-            </div>
-
-            <label class="field field-priority">
-              <span class="field-label">Example replies (one per line)</span>
-              <textarea
-                id="exampleReplies"
-                name="exampleReplies"
-                rows="5"
-                placeholder="Paste 5+ real replies you've posted.&#10;yeah the second option is underrated — most people bail before that part&#10;we tried this at 3am once and it broke in the best way&#10;the boring middle is where most teams actually lose"
-              ></textarea>
-              <span class="field-hint">Biggest quality leap. The model copies your rhythm and word choice — not the content.</span>
-            </label>
-
-            <div class="grid">
-              <label class="field">
-                <span class="field-label">Niche / what you're known for</span>
-                <input
-                  id="niche"
-                  name="niche"
-                  type="text"
-                  placeholder="e.g. B2B SaaS growth, indie hacking, AI tooling"
-                />
-              </label>
-
-              <label class="field">
-                <span class="field-label">Brand goal</span>
-                <div class="select-wrap">
-                  <select id="brandGoal" name="brandGoal">
-                    <option value="authority">Build authority</option>
-                    <option value="grow">Grow audience</option>
-                    <option value="network">Network / relationships</option>
-                    <option value="engage">Spark conversation</option>
-                  </select>
-                </div>
-              </label>
-            </div>
-
-            <label class="field">
-              <span class="field-label">Personal writing style</span>
-              <textarea
-                id="personalStyle"
-                name="personalStyle"
-                rows="3"
-                placeholder="Direct founder voice. Short sentences. No hype, no hashtags. Opinionated when I have a take. Never preachy."
-              ></textarea>
-            </label>
-
-            <label class="field">
-              <span class="field-label">Expertise (one per line)</span>
-              <textarea
-                id="expertise"
-                name="expertise"
-                rows="3"
-                placeholder="cold email systems&#10;PLG onboarding&#10;shipping weekly in public"
-              ></textarea>
-              <span class="field-hint">Topics you can speak from with confidence.</span>
-            </label>
-
-            <label class="field">
-              <span class="field-label">Beliefs / hot takes (one per line)</span>
-              <textarea
-                id="beliefs"
-                name="beliefs"
-                rows="3"
-                placeholder="Distribution beats product polish early&#10;Most advice fails because people skip the boring middle"
-              ></textarea>
-            </label>
-
-            <label class="field">
-              <span class="field-label">Signature phrases (optional)</span>
-              <textarea
-                id="signaturePhrases"
-                name="signaturePhrases"
-                rows="2"
-                placeholder="ship the ugly version first&#10;boring middle"
-              ></textarea>
-            </label>
-          </section>
-
-          <section class="card">
-            <div class="card-head">
-              <div class="card-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
                   <path d="M12 2 4 6v6c0 5 3.4 8.3 8 10 4.6-1.7 8-5 8-10V6l-8-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
                 </svg>
               </div>
               <div>
-                <h2>AI provider</h2>
-                <p>Your key stays in Chrome sync storage on this device.</p>
+                <h2>Provider</h2>
+                <p>Your key is stored locally in Chrome sync storage.</p>
               </div>
             </div>
 
             <div class="grid">
               <label class="field">
-                <span class="field-label">Provider</span>
+                <span class="field-label">AI provider</span>
                 <div class="select-wrap">
                   <select id="provider" name="provider">
                     <option value="openai">OpenAI</option>
@@ -196,8 +99,8 @@
                 </svg>
               </div>
               <div>
-                <h2>Reply defaults</h2>
-                <p>Applied to every draft batch.</p>
+                <h2>Reply style</h2>
+                <p>Defaults applied to every draft.</p>
               </div>
             </div>
 
@@ -206,13 +109,13 @@
                 <span class="field-label">Default tone</span>
                 <div class="select-wrap">
                   <select id="tone" name="tone">
-                    <option value="concise">Short and punchy</option>
-                    <option value="thought-leader">Thought leadership</option>
                     <option value="friendly">Friendly</option>
                     <option value="professional">Professional</option>
                     <option value="witty">Witty</option>
                     <option value="supportive">Supportive</option>
                     <option value="contrarian">Contrarian</option>
+                    <option value="concise">Short and punchy</option>
+                    <option value="thought-leader">Thought leadership</option>
                     <option value="question">Ask a smart question</option>
                   </select>
                 </div>
@@ -224,20 +127,6 @@
                   <select id="replyLength" name="replyLength">
                     <option value="short">Short</option>
                     <option value="medium">Medium</option>
-                  </select>
-                </div>
-              </label>
-
-              <label class="field">
-                <span class="field-label">Replies per draft</span>
-                <div class="select-wrap">
-                  <select id="replyCount" name="replyCount">
-                    <option value="1">1 reply</option>
-                    <option value="2">2 replies</option>
-                    <option value="3">3 replies (default)</option>
-                    <option value="4">4 replies</option>
-                    <option value="5">5 replies</option>
-                    <option value="6">6 replies</option>
                   </select>
                 </div>
               </label>
@@ -255,12 +144,12 @@
             </div>
 
             <label class="field">
-              <span class="field-label">Words &amp; phrases to avoid</span>
+              <span class="field-label">Personal writing style</span>
               <textarea
-                id="avoidWords"
-                name="avoidWords"
-                rows="2"
-                placeholder="game-changer, synergy, as someone who, unpack, dive in"
+                id="personalStyle"
+                name="personalStyle"
+                rows="5"
+                placeholder="Example: Direct, lightly warm, no hype, no hashtags. Talk like a founder who ships."
               ></textarea>
             </label>
           </section>
@@ -291,20 +180,15 @@
                 <dt>API key</dt>
                 <dd id="summaryKey">Not set</dd>
               </div>
-              <div class="summary-item">
-                <dt>Voice</dt>
-                <dd id="summaryVoice">Incomplete</dd>
-              </div>
             </dl>
           </div>
 
           <div class="summary-card summary-note">
-            <div class="summary-title">Best results</div>
+            <div class="summary-title">Good to know</div>
             <ul>
-              <li><strong>Example replies</strong> — paste 5+ real ones first.</li>
-              <li><strong>Niche + beliefs</strong> — give the model your POV.</li>
-              <li><strong>Model</strong> — GPT-4o or Claude Sonnet for sharpest drafts.</li>
-              <li>Panel shows “Read as” so you can verify understanding.</li>
+              <li>Keys never leave your browser in this build.</li>
+              <li>Drafts are generated on demand, one post at a time.</li>
+              <li>For a paid public release, move calls behind a backend.</li>
             </ul>
           </div>
         </aside>
