@@ -215,6 +215,13 @@ async function generateAndShowReplies(
           payload: { ...context, variant, count: 1 }
         });
         return regen.replies[0] || "";
+      },
+      regenerateAll: async () => {
+        const regen = await sendRuntimeMessage<ReplyGenerationResult>({
+          type: "GENERATE_REPLIES",
+          payload: context
+        });
+        return regen.replies;
       }
     });
   } catch (error) {
@@ -666,6 +673,7 @@ function showPanel(
         contextLabel?: string;
         onSelect: (reply: string) => void;
         regenerate?: (variant: RegenVariant) => Promise<string>;
+        regenerateAll?: () => Promise<string[]>;
       }
 ): void {
   closePanel(false);
@@ -713,7 +721,16 @@ function showPanel(
   });
 
   if (state.status === "ready") {
-    renderReadyState(panel, body, subtitle, state.replies, state.onSelect, state.contextLabel, state.regenerate);
+    renderReadyState(
+      panel,
+      body,
+      subtitle,
+      state.replies,
+      state.onSelect,
+      state.contextLabel,
+      state.regenerate,
+      state.regenerateAll
+    );
   } else if (state.status === "loading") {
     const loading = document.createElement("div");
     loading.className = "xra-loading-block";
@@ -858,9 +875,11 @@ function renderReadyState(
   replies: string[],
   onInsert: (reply: string) => void,
   contextLabel?: string,
-  regenerate?: (variant: RegenVariant) => Promise<string>
+  regenerate?: (variant: RegenVariant) => Promise<string>,
+  regenerateAll?: () => Promise<string[]>
 ): void {
   const labels = ["Agree + add", "Nuance", "Question"];
+  let currentReplies = replies;
 
   const showList = (): void => {
     body.innerHTML = "";
@@ -869,18 +888,56 @@ function renderReadyState(
     const list = document.createElement("div");
     list.className = "xra-reply-list";
 
-    if (contextLabel) {
-      const context = document.createElement("div");
-      context.className = "xra-context-chip";
-      context.innerHTML =
-        '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.4 8.3 8 10 4.6-1.7 8-5 8-10V6l-8-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
-      const label = document.createElement("span");
-      label.textContent = contextLabel;
-      context.append(label);
-      list.append(context);
+    if (contextLabel || regenerateAll) {
+      const toolbar = document.createElement("div");
+      toolbar.className = "xra-reply-toolbar";
+
+      if (contextLabel) {
+        const context = document.createElement("div");
+        context.className = "xra-context-chip";
+        context.innerHTML =
+          '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.4 8.3 8 10 4.6-1.7 8-5 8-10V6l-8-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+        const label = document.createElement("span");
+        label.textContent = contextLabel;
+        context.append(label);
+        toolbar.append(context);
+      }
+
+      if (regenerateAll) {
+        const regenAllBtn = document.createElement("button");
+        regenAllBtn.type = "button";
+        regenAllBtn.className = "xra-chip xra-regen-all";
+        regenAllBtn.innerHTML = actionIcon("regen") + "<span>Regenerate all</span>";
+        regenAllBtn.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          regenAllBtn.disabled = true;
+          subtitle.textContent = "Writing a fresh set…";
+          body.innerHTML = "";
+          const loading = document.createElement("div");
+          loading.className = "xra-loading-block";
+          loading.innerHTML =
+            '<div class="xra-spinner" aria-hidden="true"></div><p class="xra-loading">Writing a fresh set…</p>';
+          body.append(loading);
+          try {
+            const next = await regenerateAll();
+            if (next.length > 0) {
+              currentReplies = next;
+            }
+          } catch (error) {
+            subtitle.textContent =
+              error instanceof Error ? error.message : "Could not regenerate. Try again.";
+          } finally {
+            showList();
+          }
+        });
+        toolbar.append(regenAllBtn);
+      }
+
+      list.append(toolbar);
     }
 
-    replies.forEach((reply, index) => {
+    currentReplies.forEach((reply, index) => {
       const label = labels[index] || `Option ${index + 1}`;
       let current = reply;
 
@@ -1281,9 +1338,9 @@ function injectStyles(): void {
     .${BUTTON_CLASS} {
       align-items: center;
       background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 999px;
-      color: #e7e9ea;
+      color: #eef1f5;
       cursor: pointer;
       display: inline-flex;
       flex-shrink: 0;
@@ -1294,14 +1351,14 @@ function injectStyles(): void {
       margin: 0;
       padding: 0 12px 0 6px;
       position: relative;
-      transition: background 140ms ease, border-color 140ms ease, transform 120ms ease;
+      transition: background 140ms ease, border-color 140ms ease;
       white-space: nowrap;
       z-index: 5;
     }
 
     .${BUTTON_CLASS}:hover {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.28);
+      background: rgba(29, 155, 240, 0.1);
+      border-color: rgba(29, 155, 240, 0.35);
     }
 
     .${BUTTON_CLASS}:active {
@@ -1310,10 +1367,10 @@ function injectStyles(): void {
 
     .xra-btn-badge {
       align-items: center;
-      background: linear-gradient(150deg, #1d9bf0, #0b5f9e);
-      border-radius: 7px;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
-      color: #fff;
+      background: rgba(29, 155, 240, 0.14);
+      border: 1px solid rgba(29, 155, 240, 0.22);
+      border-radius: 6px;
+      color: #1d9bf0;
       display: grid;
       flex-shrink: 0;
       height: 20px;
@@ -1322,10 +1379,7 @@ function injectStyles(): void {
     }
 
     .${BUTTON_CLASS} .xra-btn-text {
-      background: linear-gradient(180deg, #ffffff, #cdd6e0);
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
+      color: #eef1f5;
     }
 
     .xra-article-button-wrap {
@@ -1354,12 +1408,11 @@ function injectStyles(): void {
 
     #${PANEL_ID} {
       -webkit-font-smoothing: antialiased;
-      backdrop-filter: blur(20px);
-      background: linear-gradient(180deg, rgba(15, 20, 30, 0.98), rgba(9, 12, 19, 0.98));
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 20px;
-      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-      color: #eef3f8;
+      background: #151820;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+      color: #eef1f5;
       display: flex;
       flex-direction: column;
       font-family: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -1379,7 +1432,7 @@ function injectStyles(): void {
 
     .xra-panel-header {
       align-items: center;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       display: flex;
       gap: 11px;
       padding: 16px 48px 15px 18px;
@@ -1387,10 +1440,10 @@ function injectStyles(): void {
 
     .xra-panel-mark {
       align-items: center;
-      background: linear-gradient(150deg, #1d9bf0, #0b5f9e);
-      border-radius: 10px;
-      box-shadow: 0 6px 16px rgba(29, 155, 240, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-      color: #fff;
+      background: rgba(29, 155, 240, 0.12);
+      border: 1px solid rgba(29, 155, 240, 0.22);
+      border-radius: 9px;
+      color: #1d9bf0;
       display: grid;
       flex-shrink: 0;
       height: 32px;
@@ -1491,29 +1544,50 @@ function injectStyles(): void {
       gap: 9px;
     }
 
+    .xra-reply-toolbar {
+      align-items: center;
+      display: flex;
+      gap: 8px;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      min-width: 0;
+    }
+
     .xra-context-chip {
       align-items: center;
-      background: rgba(29, 155, 240, 0.1);
-      border: 1px solid rgba(29, 155, 240, 0.22);
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 10px;
-      color: #7dd3fc;
+      color: #9aa3b2;
       display: flex;
+      flex: 1 1 auto;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 600;
       gap: 7px;
-      margin-bottom: 3px;
+      min-width: 0;
       padding: 8px 11px;
+    }
+
+    .xra-context-chip span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .xra-context-chip svg {
       flex-shrink: 0;
+      color: #1d9bf0;
+    }
+
+    .xra-regen-all {
+      flex-shrink: 0;
     }
 
     .xra-reply-choice {
-      background: rgba(255, 255, 255, 0.025);
+      background: #101218;
       border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 14px;
-      color: #eef3f8;
+      border-radius: 12px;
+      color: #eef1f5;
       display: grid;
       gap: 10px;
       padding: 14px 15px;
@@ -1579,19 +1653,9 @@ function injectStyles(): void {
 
     .xra-reply-actions {
       display: flex;
+      flex-wrap: wrap;
       gap: 7px;
-      max-height: 0;
-      opacity: 0;
-      overflow: hidden;
-      transform: translateY(-4px);
-      transition: opacity 150ms ease, max-height 150ms ease, transform 150ms ease;
-    }
-
-    .xra-reply-choice:hover .xra-reply-actions,
-    .xra-reply-choice:focus-within .xra-reply-actions {
-      max-height: 48px;
       opacity: 1;
-      transform: translateY(0);
     }
 
     .xra-chip {
@@ -1618,15 +1682,16 @@ function injectStyles(): void {
     }
 
     .xra-chip-primary {
-      background: rgba(29, 155, 240, 0.16);
-      border-color: rgba(29, 155, 240, 0.45);
-      color: #6aa8ff;
+      background: #1d9bf0;
+      border-color: #1d9bf0;
+      color: #fff;
       margin-left: auto;
     }
 
     .xra-chip-primary:hover {
-      background: rgba(29, 155, 240, 0.26);
-      color: #eaf5ff;
+      background: #1a8cd8;
+      border-color: #1a8cd8;
+      color: #fff;
     }
 
     .xra-regen {
@@ -1739,13 +1804,12 @@ function injectStyles(): void {
     }
 
     .xra-btn-primary {
-      background: linear-gradient(135deg, #1d9bf0, #0b5f9e);
-      box-shadow: 0 10px 22px rgba(29, 155, 240, 0.28);
+      background: #1d9bf0;
       color: #fff;
     }
 
     .xra-btn-primary:hover {
-      box-shadow: 0 14px 28px rgba(29, 155, 240, 0.4);
+      background: #1a8cd8;
     }
 
     .xra-btn-secondary {
