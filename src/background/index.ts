@@ -183,11 +183,51 @@ function describeVariant(variant: NonNullable<ReplyGenerationRequest["variant"]>
   }
 }
 
+function describeBatchMode(mode: NonNullable<ReplyGenerationRequest["batchMode"]>): string[] {
+  switch (mode) {
+    case "shorter":
+      return [
+        "Write 3 SHORT reply options.",
+        "Hard limit: each reply under ~120 characters, ideally one punchy line.",
+        "Still specific to the post — cut filler, not substance."
+      ];
+    case "questions":
+      return [
+        "Write 3 reply options that are QUESTIONS.",
+        "Each must be a sharp, specific question about something in THIS post — not generic curiosity.",
+        "No statements. End with a question mark."
+      ];
+    case "new_angles":
+      return [
+        "Write 3 reply options from FRESH ANGLES — different takes than a typical agree / nuance / question set.",
+        "Good angles: operator detail, unexpected implication, lived tradeoff, mild pushback, concrete example.",
+        "Each option should feel like a different person noticed a different detail."
+      ];
+    case "natural":
+      return [
+        "Write 3 MORE NATURAL reply options — like a real person typing on X, not an essay or AI assistant.",
+        "Use casual rhythm, contractions, incomplete polish is fine. Sound human and specific.",
+        "Avoid stiff openings, corporate phrasing, and over-explained takes."
+      ];
+    case "fresh":
+    default:
+      return [
+        "Write 3 distinct reply options that fit the context above:",
+        "1) A sharp agreement that adds one specific point",
+        "2) A thoughtful pushback, nuance, or alternate angle",
+        "3) A smart question or a practical takeaway"
+      ];
+  }
+}
+
 function buildUserPrompt(settings: AssistantSettings, request: ReplyGenerationRequest): string {
-  const length =
-    settings.replyLength === "short"
-      ? "Keep each reply to 1 short sentence, ideally under 180 characters."
-      : "Keep each reply to 1-2 natural sentences, under 280 characters.";
+  const batchMode = request.batchMode;
+  const forceShort = batchMode === "shorter" || settings.replyLength === "short";
+  const length = forceShort
+    ? batchMode === "shorter"
+      ? "Keep each reply under ~120 characters — one punchy line."
+      : "Keep each reply to 1 short sentence, ideally under 180 characters."
+    : "Keep each reply to 1-2 natural sentences, under 280 characters.";
   const emojiRule = settings.includeEmoji
     ? "Use at most one emoji, and only if it feels natural."
     : "Do not use emoji.";
@@ -207,13 +247,7 @@ function buildUserPrompt(settings: AssistantSettings, request: ReplyGenerationRe
         describeVariant(request.variant),
         "Make each option distinct from typical phrasing — vary the angle and wording."
       ]
-    : [
-        "TASK",
-        "Write 3 distinct reply options that fit the context above:",
-        "1) A sharp agreement that adds one specific point",
-        "2) A thoughtful pushback, nuance, or alternate angle",
-        "3) A smart question or a practical takeaway"
-      ];
+    : ["TASK", ...describeBatchMode(batchMode ?? "fresh")];
 
   const lines = [
     "CONTEXT",

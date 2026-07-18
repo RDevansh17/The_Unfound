@@ -30,6 +30,9 @@ export type ReplyVariant =
   | "humorous"
   | "professional";
 
+/** Modes for regenerating a full batch of replies */
+export type BatchRegenMode = "fresh" | "shorter" | "questions" | "new_angles" | "natural";
+
 export interface ReplyGenerationRequest {
   targetText: string;
   targetAuthor?: string;
@@ -42,6 +45,7 @@ export interface ReplyGenerationRequest {
   isReply: boolean;
   sourceUrl: string;
   variant?: ReplyVariant;
+  batchMode?: BatchRegenMode;
   count?: number;
 }
 

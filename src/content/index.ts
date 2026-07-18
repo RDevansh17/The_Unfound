@@ -36,6 +36,8 @@ type RegenVariant =
   | "humorous"
   | "professional";
 
+type BatchRegenMode = "fresh" | "shorter" | "questions" | "new_angles" | "natural";
+
 const REGEN_OPTIONS: { value: RegenVariant; label: string }[] = [
   { value: "agree", label: "Agree" },
   { value: "contrarian", label: "Contrarian" },
@@ -44,6 +46,14 @@ const REGEN_OPTIONS: { value: RegenVariant; label: string }[] = [
   { value: "witty", label: "Witty" },
   { value: "humorous", label: "Humorous" },
   { value: "professional", label: "Professional" }
+];
+
+const REGEN_ALL_OPTIONS: { value: BatchRegenMode; label: string }[] = [
+  { value: "fresh", label: "Fresh set" },
+  { value: "shorter", label: "Shorter replies" },
+  { value: "questions", label: "Question replies" },
+  { value: "new_angles", label: "New angles" },
+  { value: "natural", label: "More natural" }
 ];
 
 let cachedOwnHandle: string | null = null;
@@ -216,10 +226,10 @@ async function generateAndShowReplies(
         });
         return regen.replies[0] || "";
       },
-      regenerateAll: async () => {
+      regenerateAll: async (mode) => {
         const regen = await sendRuntimeMessage<ReplyGenerationResult>({
           type: "GENERATE_REPLIES",
-          payload: context
+          payload: { ...context, batchMode: mode }
         });
         return regen.replies;
       }
@@ -673,7 +683,7 @@ function showPanel(
         contextLabel?: string;
         onSelect: (reply: string) => void;
         regenerate?: (variant: RegenVariant) => Promise<string>;
-        regenerateAll?: () => Promise<string[]>;
+        regenerateAll?: (mode: BatchRegenMode) => Promise<string[]>;
       }
 ): void {
   closePanel(false);
@@ -876,10 +886,47 @@ function renderReadyState(
   onInsert: (reply: string) => void,
   contextLabel?: string,
   regenerate?: (variant: RegenVariant) => Promise<string>,
-  regenerateAll?: () => Promise<string[]>
+  regenerateAll?: (mode: BatchRegenMode) => Promise<string[]>
 ): void {
-  const labels = ["Agree + add", "Nuance", "Question"];
   let currentReplies = replies;
+  let currentBatchMode: BatchRegenMode = "fresh";
+
+  const labelsForMode = (mode: BatchRegenMode): string[] => {
+    switch (mode) {
+      case "shorter":
+        return ["Short 1", "Short 2", "Short 3"];
+      case "questions":
+        return ["Question 1", "Question 2", "Question 3"];
+      case "new_angles":
+        return ["Angle 1", "Angle 2", "Angle 3"];
+      case "natural":
+        return ["Natural 1", "Natural 2", "Natural 3"];
+      default:
+        return ["Agree + add", "Nuance", "Question"];
+    }
+  };
+
+  const runRegenerateAll = async (mode: BatchRegenMode, modeLabel: string): Promise<void> => {
+    subtitle.textContent = `Writing ${modeLabel.toLowerCase()}…`;
+    body.innerHTML = "";
+    const loading = document.createElement("div");
+    loading.className = "xra-loading-block";
+    loading.innerHTML =
+      `<div class="xra-spinner" aria-hidden="true"></div><p class="xra-loading">Writing ${modeLabel.toLowerCase()}…</p>`;
+    body.append(loading);
+    try {
+      const next = await regenerateAll?.(mode);
+      if (next && next.length > 0) {
+        currentReplies = next;
+        currentBatchMode = mode;
+      }
+    } catch (error) {
+      subtitle.textContent =
+        error instanceof Error ? error.message : "Could not regenerate. Try again.";
+    } finally {
+      showList();
+    }
+  };
 
   const showList = (): void => {
     body.innerHTML = "";
@@ -904,38 +951,69 @@ function renderReadyState(
       }
 
       if (regenerateAll) {
+        const regenAllWrap = document.createElement("div");
+        regenAllWrap.className = "xra-regen xra-regen-all-wrap";
+
         const regenAllBtn = document.createElement("button");
         regenAllBtn.type = "button";
         regenAllBtn.className = "xra-chip xra-regen-all";
         regenAllBtn.innerHTML = actionIcon("regen") + "<span>Regenerate all</span>";
-        regenAllBtn.addEventListener("click", async (event) => {
+
+        const menu = document.createElement("div");
+        menu.className = "xra-regen-menu xra-regen-all-menu";
+        menu.hidden = true;
+        panel.append(menu);
+
+        REGEN_ALL_OPTIONS.forEach((option) => {
+          const item = document.createElement("button");
+          item.type = "button";
+          item.className = "xra-regen-item";
+          item.textContent = option.label;
+          item.addEventListener("click", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            menu.hidden = true;
+            await runRegenerateAll(option.value, option.label);
+          });
+          menu.append(item);
+        });
+
+        regenAllBtn.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
-          regenAllBtn.disabled = true;
-          subtitle.textContent = "Writing a fresh set…";
-          body.innerHTML = "";
-          const loading = document.createElement("div");
-          loading.className = "xra-loading-block";
-          loading.innerHTML =
-            '<div class="xra-spinner" aria-hidden="true"></div><p class="xra-loading">Writing a fresh set…</p>';
-          body.append(loading);
-          try {
-            const next = await regenerateAll();
-            if (next.length > 0) {
-              currentReplies = next;
-            }
-          } catch (error) {
-            subtitle.textContent =
-              error instanceof Error ? error.message : "Could not regenerate. Try again.";
-          } finally {
-            showList();
+          const willOpen = menu.hidden;
+          closeAllRegenMenus();
+          if (!willOpen) {
+            return;
           }
+
+          menu.hidden = false;
+          const buttonRect = regenAllBtn.getBoundingClientRect();
+          const panelRect = panel.getBoundingClientRect();
+          const menuHeight = menu.offsetHeight;
+          const menuWidth = menu.offsetWidth;
+          let top = buttonRect.bottom - panelRect.top + 6;
+          let left = buttonRect.right - panelRect.left - menuWidth;
+
+          if (top + menuHeight > panelRect.height - 12) {
+            top = buttonRect.top - panelRect.top - menuHeight - 6;
+          }
+          if (left < 12) {
+            left = 12;
+          }
+
+          menu.style.top = `${Math.max(8, top)}px`;
+          menu.style.left = `${left}px`;
         });
-        toolbar.append(regenAllBtn);
+
+        regenAllWrap.append(regenAllBtn);
+        toolbar.append(regenAllWrap);
       }
 
       list.append(toolbar);
     }
+
+    const labels = labelsForMode(currentBatchMode);
 
     currentReplies.forEach((reply, index) => {
       const label = labels[index] || `Option ${index + 1}`;
@@ -1579,8 +1657,17 @@ function injectStyles(): void {
       color: #1d9bf0;
     }
 
+    .xra-regen-all-wrap {
+      flex-shrink: 0;
+      position: relative;
+    }
+
     .xra-regen-all {
       flex-shrink: 0;
+    }
+
+    .xra-regen-all-menu {
+      min-width: 168px;
     }
 
     .xra-reply-choice {
