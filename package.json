@@ -1,0 +1,29 @@
+{
+  "name": "x-reply-assistant-extension",
+  "version": "1.0.0",
+  "description": "Chrome extension that helps draft AI-assisted replies on X posts and replies.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rdevansh17/the_unfound.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/rdevansh17/the_unfound/issues"
+  },
+  "homepage": "https://github.com/rdevansh17/the_unfound#readme",
+  "devDependencies": {
+    "@types/chrome": "^0.2.2",
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.4"
+  }
+}
