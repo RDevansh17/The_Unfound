@@ -13,10 +13,12 @@ type ReplyContext = {
   targetAuthor?: string;
   targetHandle?: string;
   isTargetMine: boolean;
+  targetImageUrls?: string[];
   rootText?: string;
   rootAuthor?: string;
   rootHandle?: string;
   isRootMine: boolean;
+  rootImageUrls?: string[];
   isReply: boolean;
   sourceUrl: string;
 };
@@ -25,6 +27,7 @@ type ArticleInfo = {
   text: string;
   name?: string;
   handle?: string;
+  imageUrls: string[];
 };
 
 type RegenVariant =
@@ -163,7 +166,7 @@ function createAssistantButton(label: string): HTMLButtonElement {
 async function openAssistantForArticle(article: HTMLElement, anchor: HTMLElement): Promise<void> {
   watchedComposer = null;
   const context = gatherReplyContext(article);
-  if (!context.targetText) {
+  if (!hasReadablePostContent(context)) {
     showPanel(anchor, {
       status: "error",
       message: "I could not read this post yet. Try opening the post detail page and click AI Reply again."
@@ -198,15 +201,18 @@ async function generateAndShowReplies(
   textbox: HTMLElement
 ): Promise<void> {
   watchedComposer = textbox;
-  if (!context.targetText.trim()) {
+  if (!hasReadablePostContent(context)) {
     showPanel(anchor, {
       status: "error",
-      message: "I need visible post text to draft a useful reply."
+      message: "I need visible post text or images to draft a useful reply."
     });
     return;
   }
 
-  showPanel(anchor, { status: "loading", message: "Drafting thoughtful replies..." });
+  const loadingMessage = context.targetImageUrls?.length
+    ? "Reading the post and images..."
+    : "Drafting thoughtful replies...";
+  showPanel(anchor, { status: "loading", message: loadingMessage });
 
   try {
     const result = await sendRuntimeMessage<ReplyGenerationResult>({
@@ -264,6 +270,64 @@ function getOwnHandle(): string | null {
   return null;
 }
 
+function hasReadablePostContent(context: ReplyContext): boolean {
+  return Boolean(context.targetText.trim() || context.targetImageUrls?.length);
+}
+
+function normalizeTwimgUrl(src: string): string | null {
+  if (!src || src.startsWith("data:") || src.startsWith("blob:")) {
+    return null;
+  }
+
+  if (
+    src.includes("/profile_images/") ||
+    src.includes("/emoji/") ||
+    src.includes("abs.twimg.com") ||
+    src.includes("/profile_banners/")
+  ) {
+    return null;
+  }
+
+  try {
+    const url = new URL(src);
+    if (!url.hostname.endsWith("twimg.com") && !url.hostname.endsWith("twitter.com")) {
+      return null;
+    }
+
+    const name = url.searchParams.get("name");
+    if (name === "small" || name === "thumb" || name === "360x360") {
+      url.searchParams.set("name", "medium");
+    }
+
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function getArticleImageUrls(article: HTMLElement): string[] {
+  const urls = new Set<string>();
+
+  const addImg = (img: HTMLImageElement): void => {
+    const src = normalizeTwimgUrl(img.currentSrc || img.src);
+    if (src) {
+      urls.add(src);
+    }
+  };
+
+  article.querySelectorAll<HTMLImageElement>('[data-testid="tweetPhoto"] img').forEach(addImg);
+
+  if (urls.size === 0) {
+    article
+      .querySelectorAll<HTMLImageElement>(
+        'a[href*="/photo/"] img, [data-testid="card.wrapper"] img, [data-testid="card.layoutLarge.media"] img'
+      )
+      .forEach(addImg);
+  }
+
+  return Array.from(urls).slice(0, 4);
+}
+
 function getArticleInfo(article: HTMLElement): ArticleInfo {
   const text = Array.from(article.querySelectorAll<HTMLElement>('[data-testid="tweetText"]'))
     .map((node) => node.innerText.trim())
@@ -276,7 +340,7 @@ function getArticleInfo(article: HTMLElement): ArticleInfo {
   const handle = handleMatch ? handleMatch[1].toLowerCase() : undefined;
   const name = nameText.split("\n")[0]?.trim() || undefined;
 
-  return { text, name, handle };
+  return { text, name, handle, imageUrls: getArticleImageUrls(article) };
 }
 
 function getReplyingToHandles(article: HTMLElement): string[] {
@@ -296,17 +360,34 @@ function getConversationArticles(): HTMLElement[] {
 }
 
 function findMatchingPageArticle(info: ArticleInfo): HTMLElement | null {
-  if (!info.text) {
-    return null;
-  }
+  const conversation = getConversationArticles();
 
-  const needle = info.text.slice(0, 40);
-  return (
-    getConversationArticles().find((article) => {
+  if (info.text) {
+    const needle = info.text.slice(0, 40);
+    const byText = conversation.find((article) => {
       const candidate = getArticleInfo(article);
       return candidate.text.slice(0, 40) === needle && candidate.handle === info.handle;
-    }) || null
-  );
+    });
+    if (byText) {
+      return byText;
+    }
+  }
+
+  // Image-only / sparse posts: match by handle + shared image URL when possible.
+  if (info.handle && info.imageUrls.length > 0) {
+    const byImage = conversation.find((article) => {
+      const candidate = getArticleInfo(article);
+      if (candidate.handle !== info.handle) {
+        return false;
+      }
+      return candidate.imageUrls.some((url) => info.imageUrls.includes(url));
+    });
+    if (byImage) {
+      return byImage;
+    }
+  }
+
+  return null;
 }
 
 function gatherReplyContext(targetArticle: HTMLElement): ReplyContext {
@@ -337,21 +418,30 @@ function gatherReplyContext(targetArticle: HTMLElement): ReplyContext {
     );
     if (replyingTo.length > 0) {
       isReply = true;
-      rootInfo = { text: "", handle: replyingTo[0] };
+      rootInfo = { text: "", handle: replyingTo[0], imageUrls: [] };
     }
   }
 
   const rootHandle = rootInfo?.handle;
+  const rootArticle =
+    onStatusPage && conversation.length > 0 && targetIndex > 0 ? conversation[0] : undefined;
+  const rootImageUrls = rootInfo?.imageUrls?.length
+    ? rootInfo.imageUrls
+    : rootArticle
+      ? getArticleImageUrls(rootArticle)
+      : undefined;
 
   return {
     targetText: target.text,
     targetAuthor: target.name,
     targetHandle: target.handle,
     isTargetMine: Boolean(own && target.handle && target.handle === own),
+    targetImageUrls: target.imageUrls.length > 0 ? target.imageUrls : undefined,
     rootText: rootInfo?.text || undefined,
     rootAuthor: rootInfo?.name,
     rootHandle,
     isRootMine: Boolean(own && rootHandle && rootHandle === own),
+    rootImageUrls: rootImageUrls && rootImageUrls.length > 0 ? rootImageUrls : undefined,
     isReply,
     sourceUrl: location.href
   };

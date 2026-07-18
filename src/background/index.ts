@@ -8,16 +8,22 @@ import type {
   RuntimeResponse
 } from "../shared/types";
 
+type VisionImage = {
+  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  base64: string;
+};
+
 const SYSTEM_PROMPT = `You are an elite X (Twitter) reply ghostwriter.
 
 Your job is to write replies that feel written by a sharp human, not an AI assistant.
 
 Quality bar:
-- React to a specific detail, claim, or angle in the post
+- React to a specific detail, claim, or angle in the post (text and/or images)
 - Sound conversational and natural
 - Add value: insight, agreement with a twist, a useful question, or a concrete observation
 - Prefer specificity over polish
 - Never sound corporate, fake-friendly, or motivational-poster
+- When images are attached, notice a concrete visual detail if it matters — do not invent what you cannot see
 
 Hard bans:
 - No hashtags
@@ -71,14 +77,21 @@ async function generateReplies(
   settings: AssistantSettings,
   request: ReplyGenerationRequest
 ): Promise<ReplyGenerationResult> {
-  const prompt = buildUserPrompt(settings, request);
   const model = settings.model || PROVIDER_DEFAULTS[settings.provider].model;
+  const visionSupported = providerSupportsVision(settings.provider, model);
+  const imageUrls = collectImageUrls(request);
+  const images = visionSupported && imageUrls.length > 0 ? await fetchImagesAsBase64(imageUrls) : [];
+  const prompt = buildUserPrompt(settings, request, {
+    visionSupported,
+    attachedImageCount: images.length,
+    requestedImageCount: imageUrls.length
+  });
 
   switch (settings.provider) {
     case "anthropic":
-      return callAnthropic({ ...settings, model }, prompt);
+      return callAnthropic({ ...settings, model }, prompt, images);
     case "gemini":
-      return callGemini({ ...settings, model }, prompt);
+      return callGemini({ ...settings, model }, prompt, images);
     case "groq":
       return callOpenAiCompatible(
         {
@@ -86,10 +99,11 @@ async function generateReplies(
           baseUrl: "https://api.groq.com/openai/v1",
           model
         },
-        prompt
+        prompt,
+        []
       );
     case "openai-compatible":
-      return callOpenAiCompatible({ ...settings, model }, prompt);
+      return callOpenAiCompatible({ ...settings, model }, prompt, images);
     case "openai":
     default:
       return callOpenAiCompatible(
@@ -98,9 +112,79 @@ async function generateReplies(
           baseUrl: "https://api.openai.com/v1",
           model
         },
-        prompt
+        prompt,
+        images
       );
   }
+}
+
+function collectImageUrls(request: ReplyGenerationRequest): string[] {
+  const urls = [...(request.targetImageUrls || []), ...(request.rootImageUrls || [])];
+  return Array.from(new Set(urls)).slice(0, 4);
+}
+
+function providerSupportsVision(provider: AssistantSettings["provider"], model: string): boolean {
+  if (provider === "groq") {
+    return false;
+  }
+
+  if (provider === "anthropic" || provider === "gemini") {
+    return true;
+  }
+
+  // OpenAI + openai-compatible: only attach images for known multimodal families.
+  return /gpt-4o|gpt-4\.1|gpt-4-turbo|gpt-4\.5|o4-mini|gemini|claude/i.test(model);
+}
+
+function normalizeMediaType(contentType: string | null): VisionImage["mediaType"] {
+  const raw = (contentType || "image/jpeg").split(";")[0].trim().toLowerCase();
+  if (raw === "image/png") {
+    return "image/png";
+  }
+  if (raw === "image/gif") {
+    return "image/gif";
+  }
+  if (raw === "image/webp") {
+    return "image/webp";
+  }
+  return "image/jpeg";
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+async function fetchImagesAsBase64(urls: string[]): Promise<VisionImage[]> {
+  const images: VisionImage[] = [];
+
+  for (const url of urls.slice(0, 4)) {
+    try {
+      const response = await fetch(url, { credentials: "omit" });
+      if (!response.ok) {
+        continue;
+      }
+
+      const buffer = await response.arrayBuffer();
+      if (buffer.byteLength === 0 || buffer.byteLength > 4_000_000) {
+        continue;
+      }
+
+      images.push({
+        mediaType: normalizeMediaType(response.headers.get("content-type")),
+        base64: arrayBufferToBase64(buffer)
+      });
+    } catch {
+      // Skip failed media fetches; fall back to text-only context.
+    }
+  }
+
+  return images;
 }
 
 function handleOrName(handle?: string, name?: string, fallback = "them"): string {
@@ -220,7 +304,11 @@ function describeBatchMode(mode: NonNullable<ReplyGenerationRequest["batchMode"]
   }
 }
 
-function buildUserPrompt(settings: AssistantSettings, request: ReplyGenerationRequest): string {
+function buildUserPrompt(
+  settings: AssistantSettings,
+  request: ReplyGenerationRequest,
+  media: { visionSupported: boolean; attachedImageCount: number; requestedImageCount: number }
+): string {
   const batchMode = request.batchMode;
   const forceShort = batchMode === "shorter" || settings.replyLength === "short";
   const length = forceShort
@@ -272,14 +360,53 @@ function buildUserPrompt(settings: AssistantSettings, request: ReplyGenerationRe
     );
   }
 
+  if (request.rootImageUrls?.length) {
+    lines.push(
+      "",
+      `The original post includes ${request.rootImageUrls.length} image(s)${
+        media.attachedImageCount > 0 ? " (attached below)" : ""
+      }.`
+    );
+  }
+
+  const targetText = request.targetText.trim() || "(no text — image-only post)";
   lines.push(
     "",
     `${capitalize(targetLabel)} (by ${target}):`,
     `"""`,
-    request.targetText.trim(),
-    `"""`,
+    targetText,
+    `"""`
+  );
+
+  if (request.targetImageUrls?.length) {
+    lines.push(
+      "",
+      `This post includes ${request.targetImageUrls.length} image(s)${
+        media.attachedImageCount > 0 ? " (attached below)" : ""
+      }.`,
+      "If the images matter, react to a concrete visual detail. Do not invent what you cannot see."
+    );
+  }
+
+  if (media.requestedImageCount > 0 && media.attachedImageCount === 0) {
+    if (!media.visionSupported) {
+      lines.push(
+        "",
+        "Note: this post has images, but the selected model cannot view them. Reply from the text only."
+      );
+    } else {
+      lines.push(
+        "",
+        "Note: images were detected but could not be loaded. Reply from the text only; do not invent visual details."
+      );
+    }
+  }
+
+  lines.push(
     "",
-    "Reference something concrete from the text above. Do not invent facts."
+    media.attachedImageCount > 0
+      ? "Reference something concrete from the text and/or images above. Do not invent facts."
+      : "Reference something concrete from the text above. Do not invent facts."
   );
 
   return lines.join("\n");
@@ -309,9 +436,24 @@ function describeTone(tone: AssistantSettings["tone"]): string {
 
 async function callOpenAiCompatible(
   settings: AssistantSettings,
-  prompt: string
+  prompt: string,
+  images: VisionImage[]
 ): Promise<ReplyGenerationResult> {
   const baseUrl = (settings.baseUrl || PROVIDER_DEFAULTS.openai.baseUrl).replace(/\/$/, "");
+  const userContent =
+    images.length === 0
+      ? prompt
+      : [
+          { type: "text", text: prompt },
+          ...images.map((image) => ({
+            type: "image_url",
+            image_url: {
+              url: `data:${image.mediaType};base64,${image.base64}`,
+              detail: "low" as const
+            }
+          }))
+        ];
+
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -325,7 +467,7 @@ async function callOpenAiCompatible(
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: prompt }
+        { role: "user", content: userContent }
       ]
     })
   });
@@ -335,7 +477,26 @@ async function callOpenAiCompatible(
   return normalizeReplies(content);
 }
 
-async function callAnthropic(settings: AssistantSettings, prompt: string): Promise<ReplyGenerationResult> {
+async function callAnthropic(
+  settings: AssistantSettings,
+  prompt: string,
+  images: VisionImage[]
+): Promise<ReplyGenerationResult> {
+  const content =
+    images.length === 0
+      ? prompt
+      : [
+          ...images.map((image) => ({
+            type: "image" as const,
+            source: {
+              type: "base64" as const,
+              media_type: image.mediaType,
+              data: image.base64
+            }
+          })),
+          { type: "text" as const, text: prompt }
+        ];
+
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -349,17 +510,31 @@ async function callAnthropic(settings: AssistantSettings, prompt: string): Promi
       max_tokens: 700,
       temperature: 0.85,
       system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: prompt }]
+      messages: [{ role: "user", content }]
     })
   });
 
   const data = await parseProviderResponse(response);
-  const content = data.content?.find((item: { type?: string }) => item.type === "text")?.text;
-  return normalizeReplies(content);
+  const text = data.content?.find((item: { type?: string }) => item.type === "text")?.text;
+  return normalizeReplies(text);
 }
 
-async function callGemini(settings: AssistantSettings, prompt: string): Promise<ReplyGenerationResult> {
+async function callGemini(
+  settings: AssistantSettings,
+  prompt: string,
+  images: VisionImage[]
+): Promise<ReplyGenerationResult> {
   const model = settings.model;
+  const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [
+    { text: prompt },
+    ...images.map((image) => ({
+      inline_data: {
+        mime_type: image.mediaType,
+        data: image.base64
+      }
+    }))
+  ];
+
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
       model
@@ -380,7 +555,7 @@ async function callGemini(settings: AssistantSettings, prompt: string): Promise<
         contents: [
           {
             role: "user",
-            parts: [{ text: prompt }]
+            parts
           }
         ]
       })

@@ -38,10 +38,14 @@ export interface ReplyGenerationRequest {
   targetAuthor?: string;
   targetHandle?: string;
   isTargetMine: boolean;
+  /** Public HTTPS image URLs attached to the target post (usually pbs.twimg.com). */
+  targetImageUrls?: string[];
   rootText?: string;
   rootAuthor?: string;
   rootHandle?: string;
   isRootMine: boolean;
+  /** Images on the original/root post when replying in a thread. */
+  rootImageUrls?: string[];
   isReply: boolean;
   sourceUrl: string;
   variant?: ReplyVariant;
