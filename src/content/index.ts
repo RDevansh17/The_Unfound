@@ -907,12 +907,14 @@ function renderReadyState(
   };
 
   const runRegenerateAll = async (mode: BatchRegenMode, modeLabel: string): Promise<void> => {
-    subtitle.textContent = `Writing ${modeLabel.toLowerCase()}…`;
+    const loadingLabel =
+      modeLabel === "Regenerate" ? "Regenerating replies…" : `Writing ${modeLabel.toLowerCase()}…`;
+    subtitle.textContent = loadingLabel;
     body.innerHTML = "";
     const loading = document.createElement("div");
     loading.className = "xra-loading-block";
     loading.innerHTML =
-      `<div class="xra-spinner" aria-hidden="true"></div><p class="xra-loading">Writing ${modeLabel.toLowerCase()}…</p>`;
+      `<div class="xra-spinner" aria-hidden="true"></div><p class="xra-loading">${loadingLabel}</p>`;
     body.append(loading);
     try {
       const next = await regenerateAll?.(mode);
@@ -964,18 +966,27 @@ function renderReadyState(
         menu.hidden = true;
         panel.append(menu);
 
-        REGEN_ALL_OPTIONS.forEach((option) => {
+        const addMenuItem = (
+          label: string,
+          resolveMode: () => BatchRegenMode
+        ): void => {
           const item = document.createElement("button");
           item.type = "button";
           item.className = "xra-regen-item";
-          item.textContent = option.label;
+          item.textContent = label;
           item.addEventListener("click", async (event) => {
             event.preventDefault();
             event.stopPropagation();
             menu.hidden = true;
-            await runRegenerateAll(option.value, option.label);
+            await runRegenerateAll(resolveMode(), label);
           });
           menu.append(item);
+        };
+
+        // Plain re-roll of the current set (same mode), then specialized batch modes.
+        addMenuItem("Regenerate", () => currentBatchMode);
+        REGEN_ALL_OPTIONS.forEach((option) => {
+          addMenuItem(option.label, () => option.value);
         });
 
         regenAllBtn.addEventListener("click", (event) => {
